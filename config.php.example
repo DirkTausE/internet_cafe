@@ -1,0 +1,19 @@
+<?php
+// config.php.example - NICHT produktive Zugangsdaten einchecken.
+// Kopiere diese Datei zu config.php und fülle die echten Werte ein.
+// Setze die Dateirechte: chmod 640 config.php  && chown www-data:www-data config.php
+
+define('DB_HOST', '127.0.0.1');
+define('DB_NAME', 'internetcafe');
+define('DB_USER', 'cafe_user');
+define('DB_PASS', 'REPLACE_WITH_DB_PASSWORD');
+
+define('BASE_URL', 'http://server.local'); // oder https://domain.tld
+define('API_KEY', 'REPLACE_WITH_API_KEY'); // per-client keys separat verwalten
+
+define('INVOICE_PDF_PATH', '/var/www/internetcafe/storage/invoices');
+define('SCAN_STORAGE_PATH', '/var/www/internetcafe/storage/scans');
+define('WKHTMLTOPDF_BIN', '/usr/bin/wkhtmltopdf');
+
+// Logging / debug
+define('APP_DEBUG', false);

@@ -1,0 +1,14 @@
+# Projekt-spezifische Ignorierliste
+/storage/
+config.php
+.env
+*.log
+*.sqlite
+*.key
+*.pem
+/.idea/
+/.vscode/
+/node_modules/
+/vendor/
+.DS_Store
+Thumbs.db
