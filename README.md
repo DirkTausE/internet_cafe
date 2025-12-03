@@ -17,3 +17,7 @@ Verzeichnisstruktur (Kurz):
 - storage/    -> Laufzeitdaten (nicht versioniert)
 
 Siehe auch REPO_STRUCTURE.md für Details.
+
+
+## Alpha preview
+Diese Branch ist bereit für Review und enthält das initiale Projektgerüst.

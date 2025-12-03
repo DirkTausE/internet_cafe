@@ -1,5 +1,5 @@
 [Unit]
-Description=Internetcafe Client Daemon (Beispiel)
+Description=Internetcafe Client Daemon
 After=network.target
 
 [Service]
