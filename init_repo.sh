@@ -433,12 +433,10 @@ if [ "$DO_GIT" -eq 1 ]; then
     if git commit -m "Remove init_repo.sh after initialization" >/dev/null 2>&1; then
       echo "  - init_repo.sh aus Git entfernt und committed"
     else
-      echo "  - Warnung: git commit fehlgeschlagen"
-      # Unstage the file if commit failed
-      git reset HEAD "$SCRIPT_PATH" >/dev/null 2>&1 || true
+      echo "  - Warnung: git commit fehlgeschlagen (Datei ist für Löschung vorgemerkt)"
     fi
   else
-    echo "  - Warnung: git rm fehlgeschlagen (möglicherweise bereits entfernt)"
+    echo "  - Hinweis: git rm übersprungen (Datei möglicherweise nicht im Repository)"
   fi
 fi
 
