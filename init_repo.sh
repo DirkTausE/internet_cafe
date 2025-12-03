@@ -429,12 +429,21 @@ SCRIPT_PATH="${BASH_SOURCE[0]}"
 
 # Remove from git if git was initialized
 if [ "$DO_GIT" -eq 1 ]; then
-  git rm -f "$SCRIPT_PATH" >/dev/null 2>&1 || true
-  git commit -m "Remove init_repo.sh after initialization" >/dev/null 2>&1 || true
-  echo "  - init_repo.sh aus Git entfernt"
+  if git rm -f "$SCRIPT_PATH" >/dev/null 2>&1; then
+    if git commit -m "Remove init_repo.sh after initialization" >/dev/null 2>&1; then
+      echo "  - init_repo.sh aus Git entfernt und committed"
+    else
+      echo "  - Warnung: git commit fehlgeschlagen"
+      # Unstage the file if commit failed
+      git reset HEAD "$SCRIPT_PATH" >/dev/null 2>&1 || true
+    fi
+  else
+    echo "  - Warnung: git rm fehlgeschlagen (möglicherweise bereits entfernt)"
+  fi
 fi
 
 # Delete the physical file
+# Note: The script can safely delete itself while running because it's already loaded into memory
 rm -f "$SCRIPT_PATH"
 echo "  - init_repo.sh gelöscht"
 echo "Repository-Initialisierung abgeschlossen."
