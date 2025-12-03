@@ -112,12 +112,7 @@ function fetchUnpaidCustomers(PDO $pdo): array {
     // Try invoices-based approach
     if (tableExists($pdo, 'invoices')) {
         // attempt common column names
-        $sql = "SELECT i.customer_id AS cid, SUM(i.amount) AS due
-                FROM invoices i
-                WHERE (i.paid = 0 OR i.status IS NULL OR i.status != 'paid')
-                GROUP BY i.customer_id
-                HAVING due > 0
-                LIMIT 500";
+        $sql = "SELECT i.customer_id AS cid, SUM(i.amount) AS due\n                FROM invoices i\n                WHERE (i.paid = 0 OR i.status IS NULL OR i.status != 'paid')\n                GROUP BY i.customer_id\n                HAVING due > 0\n                LIMIT 500";
         try {
             $rows = $pdo->query($sql)->fetchAll();
             $customers = [];
