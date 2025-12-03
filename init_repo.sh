@@ -421,3 +421,20 @@ echo " - Prüfe 'config.php.example' und erstelle lokal 'config.php'."
 echo " - Passe web/ und clients/ Dateien an (DB-Zugang, API_KEY, Server-URL)."
 echo " - Wenn gewünscht git initialisieren: ./init_repo.sh --git --push"
 echo " - Setze Dateirechte für storage/: sudo chown -R www-data:www-data storage/ && sudo chmod -R 750 storage/"
+
+# Self-deletion: Remove this initialization script from the repository
+echo
+echo "Entferne init_repo.sh aus dem Repository..."
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+
+# Remove from git if git was initialized
+if [ "$DO_GIT" -eq 1 ]; then
+  git rm -f "$SCRIPT_PATH" >/dev/null 2>&1 || true
+  git commit -m "Remove init_repo.sh after initialization" >/dev/null 2>&1 || true
+  echo "  - init_repo.sh aus Git entfernt"
+fi
+
+# Delete the physical file
+rm -f "$SCRIPT_PATH"
+echo "  - init_repo.sh gelöscht"
+echo "Repository-Initialisierung abgeschlossen."
