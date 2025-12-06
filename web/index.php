@@ -1,25 +1,19 @@
 <?php
 // web/index.php
-// Saubere, defensive Statusseite — nutzt web/db.php und web/head.php
+// Statusseite mit Bedien‑Links / Push‑Buttons für Computersteuerung, Kundenübersicht und Rechnungserstellung.
+// Spalten '#' entfernt; obere Tabelle zeigt kein "Info"-Feld mehr.
 
 declare(strict_types=1);
 
-// Load helpers and head fragment
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/head.php';
 
-// Helper: safe escaping that accepts null / non-string
 function esc($s): string {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }
 
-// Ensure $dbNotice exists
 $dbNotice = '';
-
-// Get PDO from db.php (db_get_pdo is provided there)
 $pdo = function_exists('db_get_pdo') ? db_get_pdo() : null;
-
-// Fetch data using db.php helpers if available
 $computers = [];
 $customers = [];
 
@@ -31,7 +25,6 @@ if ($pdo) {
         if (function_exists('fetch_customers')) {
             $customers = fetch_customers($pdo);
         }
-        // show DB name if possible
         try {
             $dbName = $pdo->query('SELECT DATABASE()')->fetchColumn();
             $dbNotice = 'Connected to DB: ' . ($dbName ?? '');
@@ -61,68 +54,143 @@ if (empty($customers)) {
     $dbNotice = $dbNotice !== '' ? $dbNotice : 'No unpaid customers found or DB tables missing — showing demo data';
 }
 
-// Normalize and filter only powered-on computers
 $onComputers = array_values(array_filter($computers, function($c){
     return isset($c['is_on']) && $c['is_on'] === true;
 }));
-
-// Print optional DB notice (head.php already printed header)
-if ($dbNotice !== '') {
-    echo '<p class="small muted">' . esc($dbNotice) . '</p>';
-}
 ?>
+<header style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+  <div>
+    <h1>Internetcafe — Übersicht</h1>
+    <?php if ($dbNotice !== ''): ?>
+      <p class="small muted"><?= esc($dbNotice) ?></p>
+    <?php endif; ?>
+  </div>
+  <nav aria-label="Schnellzugriff" style="text-align:right;">
+    <a href="/admin/computers.php" style="margin-right:10px;">Computersteuerung</a>
+    <a href="/admin/customers.php" style="margin-right:10px;">Kundenübersicht</a>
+    <a href="/admin/invoices/new.php" style="background:#0b79d0;color:#fff;padding:6px 10px;border-radius:4px;text-decoration:none;">Neue Rechnung</a>
+  </nav>
+</header>
+
 <section aria-labelledby="computers-heading">
-  <h2 id="computers-heading">Eingeschaltete Computer</h2>
-  <table aria-describedby="computers">
+  <h2 id="computers-heading">Rechner</h2>
+
+  <div id="monitor-msg" style="margin-bottom:8px;"></div>
+
+  <table aria-describedby="computers" id="computers-table">
     <thead>
-      <tr><th>#</th><th>Rechner</th><th>Status</th><th>Benutzer</th><th>Info</th></tr>
+      <tr><th>Rechner</th><th>Status</th><th>Benutzer</th><th>Aktion</th></tr>
     </thead>
     <tbody>
-<?php if (empty($onComputers)): ?>
-      <tr><td colspan="5" class="muted small">Keine eingeschalteten Computer gefunden.</td></tr>
-<?php else: foreach ($onComputers as $c):
+<?php if (empty($computers)): ?>
+      <tr><td colspan="4" class="muted small">Keine Rechner gefunden.</td></tr>
+<?php else: foreach ($computers as $c):
     $id = $c['id'] ?? '';
     $name = $c['name'] ?? $c['hostname'] ?? "pc-{$id}";
     $occ = $c['occupied_by'] ?? $c['client_id'] ?? $c['user_id'] ?? null;
-    $info = '';
-    if (!empty($c['raw']) && is_array($c['raw'])) {
-        $r = $c['raw'];
-        $parts = [];
-        if (!empty($r['ip']) || !empty($r['ip_address'])) $parts[] = 'ip:' . ($r['ip'] ?? $r['ip_address']);
-        if (!empty($r['mac']) || !empty($r['mac_address'])) $parts[] = 'mac:' . ($r['mac'] ?? $r['mac_address']);
-        $info = implode(' ', $parts);
-    }
+    $is_on = $c['is_on'] ?? null;
 ?>
-      <tr>
-        <td><?= esc((string)$id) ?></td>
+      <tr data-computer-id="<?= esc((string)$id) ?>">
         <td><?= esc((string)$name) ?></td>
-        <td><span class="status-on">ON</span></td>
+        <td>
+          <?php if ($is_on === true): ?>
+            <span class="status-on">ON</span>
+          <?php elseif ($is_on === false): ?>
+            <span class="muted">OFF</span>
+          <?php else: ?>
+            <span class="muted">—</span>
+          <?php endif; ?>
+        </td>
         <td><?= $occ ? esc((string)$occ) : '<span class="muted">frei</span>' ?></td>
-        <td class="small"><?= esc((string)$info) ?></td>
+        <td>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <?php if ($is_on === true): ?>
+              <button class="action-btn" data-action="stop" data-id="<?= esc((string)$id) ?>">Stop</button>
+              <button class="action-btn" data-action="restart" data-id="<?= esc((string)$id) ?>">Restart</button>
+            <?php else: ?>
+              <button class="action-btn" data-action="start" data-id="<?= esc((string)$id) ?>">Start</button>
+            <?php endif; ?>
+            <a class="small" href="/admin/computers.php#<?= urlencode((string)$id) ?>">Details</a>
+          </div>
+        </td>
       </tr>
 <?php endforeach; endif; ?>
     </tbody>
   </table>
 </section>
 
-<section aria-labelledby="customers-heading">
+<section aria-labelledby="customers-heading" style="margin-top:18px;">
   <h2 id="customers-heading">Kunden mit offenen Rechnungen</h2>
   <table aria-describedby="customers">
-    <thead><tr><th>#</th><th>Kunde</th><th>Betrag</th></tr></thead>
+    <thead><tr><th>Kunde</th><th>Betrag</th><th>Aktion</th></tr></thead>
     <tbody>
 <?php if (empty($customers)): ?>
       <tr><td colspan="3" class="muted small">Keine offenen Rechnungen gefunden.</td></tr>
 <?php else: foreach ($customers as $cust): ?>
-      <tr>
-        <td><?= esc((string)($cust['id'] ?? '')) ?></td>
+      <tr data-customer-id="<?= esc((string)($cust['id'] ?? '')) ?>">
         <td><?= esc((string)($cust['name'] ?? '—')) ?></td>
         <td><?= esc(number_format((float)($cust['due'] ?? 0), 2, ',', '.')) ?> €</td>
+        <td><a href="/admin/customers.php?id=<?= urlencode((string)($cust['id'] ?? '')) ?>">Ansehen</a> &nbsp; <a href="/admin/invoices/new.php?customer=<?= urlencode((string)($cust['id'] ?? '')) ?>">Rechnung</a></td>
       </tr>
 <?php endforeach; endif; ?>
     </tbody>
   </table>
 </section>
 
+<script>
+(function(){
+  'use strict';
+  const msgEl = document.getElementById('monitor-msg');
+  function showMessage(txt, ttl = 4000) {
+    if (!msgEl) return;
+    msgEl.textContent = txt;
+    msgEl.style.padding = '6px';
+    msgEl.style.background = '#fff7cc';
+    msgEl.style.border = '1px solid #f0e6b8';
+    setTimeout(()=>{ msgEl.textContent = ''; msgEl.style.padding=''; msgEl.style.background=''; msgEl.style.border=''; }, ttl);
+  }
+
+  async function sendAction(id, action) {
+    const endpoint = `/api/computers/${encodeURIComponent(id)}/action`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+      if (!res.ok) {
+        showMessage(`Aktion ${action} für ${id} fehlgeschlagen (HTTP ${res.status}) — öffne Adminseite.`);
+        window.location.href = `/admin/computers.php?id=${encodeURIComponent(id)}`;
+        return;
+      }
+      const j = await res.json().catch(()=>({ok:false}));
+      if (j && (j.ok || j.success)) {
+        showMessage(`Aktion ${action} für ${id} erfolgreich.`);
+        setTimeout(()=>location.reload(), 1200);
+      } else {
+        showMessage(`Aktion ${action} für ${id} ausgeführt (keine weitere Info).`);
+        setTimeout(()=>location.reload(), 1200);
+      }
+    } catch (err) {
+      console.warn('action error', err);
+      showMessage(`Aktion ${action} für ${id} nicht erreichbar — öffne Adminseite.`);
+      window.location.href = `/admin/computers.php?id=${encodeURIComponent(id)}`;
+    }
+  }
+
+  document.querySelectorAll('.action-btn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      const id = btn.getAttribute('data-id');
+      const action = btn.getAttribute('data-action');
+      if (!id || !action) return;
+      if (!confirm(`Sollen wir "${action}" auf Rechner ${id} ausführen?`)) return;
+      btn.disabled = true;
+      sendAction(id, action).finally(()=>btn.disabled = false);
+    });
+  });
+})();
+</script>
+
 <?php
-// close wrapper opened in head.php
 echo "</div>\n</body>\n</html>\n";
+?>

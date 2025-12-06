@@ -1,12 +1,14 @@
 [Unit]
-Description=Internetcafe Client Daemon
+Description=Internetcafe Client Daemon (clientd)
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /opt/internetcafe/clientd.py
+User=surfer
+Group=surfer
+ExecStart=/usr/bin/env python3 /home/surfer/Desktop/Projekte/internet_cafe/clients/clientd.py
 Restart=on-failure
-User=root
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
