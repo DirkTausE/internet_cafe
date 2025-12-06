@@ -1,7 +1,7 @@
 <?php
 // web/admin/computers.php
-// Simple admin page for computer control. Provides per-computer action buttons and a simple server-side POST
-// handler that forwards commands to the /api endpoint (if available) or simulates action for local testing.
+// Admin page to set one of the 7 states for a computer.
+// Sends JSON { action: "set_state", state: "...", occupied: "..." } to /api/computers/{id}/action (server-side).
 
 declare(strict_types=1);
 
@@ -9,6 +9,16 @@ require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../head.php';
 
 function esc($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
+$state_labels = [
+  'starting' => 'starting',
+  'frei' => 'frei',
+  'gast' => 'Gast',
+  'pause' => 'Pause',
+  'wartung' => 'Wartung',
+  'stop' => 'STOP',
+  'off' => 'OFF',
+];
 
 $pdo = function_exists('db_get_pdo') ? db_get_pdo() : null;
 $computers = [];
@@ -22,24 +32,26 @@ if ($pdo && function_exists('fetch_computers')) {
     }
 }
 
-// POST handler: forward to internal API or simulate
+// POST handler: forward set_state payload to internal API or simulate
 $server_msg = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = $_POST['id'] ?? '';
-    $action = $_POST['action'] ?? '';
+    $state = $_POST['state'] ?? '';
+    $occupied = $_POST['occupied'] ?? null;
     $id = (string)$id;
-    $action = (string)$action;
-    if ($id === '' || $action === '') {
-        $server_msg = 'Missing id or action';
+    $state = (string)$state;
+    if ($id === '' || $state === '') {
+        $server_msg = 'Missing id or state';
     } else {
-        // prefer server-side API: /api/computers/{id}/action
         $api_url = "/api/computers/".rawurlencode($id)."/action";
-        // Try local POST (relative URL) using curl (server-side)
+        $payload = ['action'=>'set_state','state'=>$state];
+        if ($occupied !== null && $occupied !== '') $payload['occupied'] = (string)$occupied;
+
         $ch = curl_init();
-        $payload = json_encode(['action' => $action]);
+        $json = json_encode($payload);
         curl_setopt($ch, CURLOPT_URL, $api_url);
         curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HEADER, false);
         curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
@@ -50,9 +62,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         curl_close($ch);
         if ($resp === false || $curl_err) {
             $server_msg = "API not reachable (curl error: " . esc($curl_err) . "). Action simulated.";
-            // simulation: write to temp file for demo
             @mkdir(sys_get_temp_dir().'/clientd-demo', 0755, true);
-            file_put_contents(sys_get_temp_dir().'/clientd-demo/'.rawurlencode($id).'_'.$action.'.txt', date('c') . " simulated\n");
+            file_put_contents(sys_get_temp_dir().'/clientd-demo/'.rawurlencode($id).'_setstate_'.$state.'.txt', date('c') . " simulated; payload=" . $json . PHP_EOL);
         } else {
             $server_msg = "API returned HTTP $http_code: " . esc(substr($resp, 0, 400));
         }
@@ -74,28 +85,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php foreach ($computers as $c):
     $id = $c['id'] ?? '';
     $name = $c['name'] ?? $c['hostname'] ?? "pc-{$id}";
-    $is_on = $c['is_on'] ?? null;
+    $state = $c['state'] ?? '';
+    $label = $state !== '' && isset($state_labels[$state]) ? $state_labels[$state] : ($state ?: '—');
     $occ = $c['occupied_by'] ?? $c['client_id'] ?? $c['user_id'] ?? null;
 ?>
     <tr id="pc-<?= esc((string)$id) ?>">
       <td><?= esc((string)$name) ?></td>
-      <td><?= $is_on === true ? '<span class="status-on">ON</span>' : ($is_on === false ? '<span class="muted">OFF</span>' : '<span class="muted">—</span>') ?></td>
+      <td><?= esc($label) ?></td>
       <td><?= $occ ? esc((string)$occ) : '<span class="muted">frei</span>' ?></td>
       <td>
         <form method="post" style="display:inline-block;margin-right:6px;">
           <input type="hidden" name="id" value="<?= esc((string)$id) ?>">
-          <input type="hidden" name="action" value="start">
-          <button type="submit">Start</button>
-        </form>
-        <form method="post" style="display:inline-block;margin-right:6px;">
-          <input type="hidden" name="id" value="<?= esc((string)$id) ?>">
-          <input type="hidden" name="action" value="stop">
-          <button type="submit">Stop</button>
-        </form>
-        <form method="post" style="display:inline-block;">
-          <input type="hidden" name="id" value="<?= esc((string)$id) ?>">
-          <input type="hidden" name="action" value="restart">
-          <button type="submit">Restart</button>
+          <select name="state" style="margin-right:6px;">
+            <?php foreach ($state_labels as $k => $lab): ?>
+              <option value="<?= esc($k) ?>" <?= $k === $state ? 'selected' : '' ?>><?= esc($lab) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <input type="text" name="occupied" placeholder="Belegung (optional)" style="width:110px;margin-right:6px;">
+          <button type="submit">Setzen</button>
         </form>
       </td>
     </tr>
@@ -108,3 +115,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <?php
 echo "</div>\n</body>\n</html>\n";
+?>
