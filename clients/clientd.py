@@ -8,10 +8,44 @@ import socket
 import requests
 import cups
 import os
+import sys
+import subprocess
+import getpass
 from datetime import datetime
 
-SERVER_URL = "http://server.local/api.php?q="
-API_KEY = "CHANGE_ME_API_KEY"
+def load_config_file(path):
+    """Load configuration from a file in KEY=VALUE format."""
+    config = {}
+    if not os.path.exists(path):
+        return config
+    try:
+        with open(path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    # Remove surrounding quotes if present (both must be the same type)
+                    if len(value) >= 2:
+                        if (value.startswith('"') and value.endswith('"')) or \
+                           (value.startswith("'") and value.endswith("'")):
+                            value = value[1:-1]
+                    config[key] = value
+    except Exception as e:
+        print(f"Warning: Failed to load config from {path}: {e}", file=sys.stderr)
+    return config
+
+# Load configuration from file or environment
+config = load_config_file('/etc/internetcafe-clientd.conf')
+SERVER_URL = os.getenv('SERVER_URL', config.get('SERVER_URL', "http://server.local/api.php?q="))
+API_KEY = os.getenv('API_KEY', config.get('API_KEY', ''))
+
+if not API_KEY:
+    print("Warning: API_KEY not set. Please set API_KEY environment variable or add it to /etc/internetcafe-clientd.conf", file=sys.stderr)
+
 HOSTNAME = socket.gethostname()
 CHECKIN_INTERVAL = 15
 PRINT_POLL_INTERVAL = 5
@@ -73,25 +107,60 @@ class ClientDaemon:
         self.last_job_ids = current_ids
 
     def checkin_state(self):
+        state = None  # Initialize state to avoid NameError
         try:
             r = requests.get(SERVER_URL + "pc/get_state", params={'host': HOSTNAME}, timeout=5)
             if r.status_code == 200:
                 js = r.json()
                 state = js.get('computer', {}).get('current_state')
+                # Normalize state to lowercase
+                state = (state or '').lower()
                 # optional: if state instructs logout/lock, do it
                 self.apply_state(state)
             # post back last_checkin
-            headers = {'X-API-KEY': API_KEY}
-            requests.post(SERVER_URL + "pc/set_state", json={'host': HOSTNAME, 'state': state}, headers=headers, timeout=5)
+            if state is not None:
+                headers = {'X-API-KEY': API_KEY}
+                requests.post(SERVER_URL + "pc/set_state", json={'host': HOSTNAME, 'state': state}, headers=headers, timeout=5)
         except Exception as e:
             print("checkin error", e)
 
     def apply_state(self, state):
-        if state in ('STOP','OFF'):
-            # log out all users
-            os.system("loginctl terminate-user $(whoami) || true")
+        # Normalize state to lowercase for comparison
+        state = (state or '').lower()
+        
+        if state in ('stop', 'off'):
+            # log out all users - get current user safely
+            try:
+                current_user = getpass.getuser()
+            except Exception:
+                # Fallback to environment variables if getuser() fails
+                current_user = os.getenv('USER') or os.getenv('LOGNAME')
+            
+            if current_user:
+                # Validate username to prevent command injection (alphanumeric, dash, underscore only)
+                if all(c.isalnum() or c in '-_' for c in current_user):
+                    try:
+                        result = subprocess.run(['loginctl', 'terminate-user', current_user], 
+                                              capture_output=True, text=True, timeout=10)
+                        if result.returncode != 0 and result.returncode != 1:
+                            # returncode 1 might mean user not logged in, which is ok
+                            print(f"Warning: Failed to terminate user {current_user}: {result.stderr}", file=sys.stderr)
+                    except subprocess.TimeoutExpired:
+                        print(f"Warning: Timeout terminating user {current_user}", file=sys.stderr)
+                    except Exception as e:
+                        print(f"Warning: Error terminating user {current_user}: {e}", file=sys.stderr)
+                else:
+                    print(f"Warning: Invalid username format: {current_user}", file=sys.stderr)
         elif state == 'pause':
-            os.system("loginctl lock-session || true")
+            try:
+                result = subprocess.run(['loginctl', 'lock-session'], 
+                                      capture_output=True, text=True, timeout=10)
+                if result.returncode != 0 and result.returncode != 1:
+                    print(f"Warning: Failed to lock session: {result.stderr}", file=sys.stderr)
+            except subprocess.TimeoutExpired:
+                print("Warning: Timeout locking session", file=sys.stderr)
+            except Exception as e:
+                print(f"Warning: Error locking session: {e}", file=sys.stderr)
         # further logic: starting->prepare kiosk, frei->allow login, gast->allow guest login
 
     def run(self):

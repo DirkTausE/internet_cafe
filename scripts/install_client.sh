@@ -144,6 +144,8 @@ if [[ "${CREATE_CLIENTD_SECRET^^}" == "Y" || "${CREATE_CLIENTD_SECRET^^}" == "YE
   if [ ! -f /etc/internetcafe-clientd.conf ]; then
     cat > /etc/internetcafe-clientd.conf <<EOF
 CLIENTD_SECRET="${CLIENTD_SECRET}"
+# Add API_KEY for client daemon to authenticate with server
+# API_KEY="your-server-api-key-here"
 EOF
     chmod 600 /etc/internetcafe-clientd.conf
     echoinfo "Wrote /etc/internetcafe-clientd.conf (mode 600)."
@@ -168,6 +170,8 @@ WorkingDirectory=${INSTALL_DIR}
 ExecStart=${INSTALL_DIR}/venv/bin/python ${INSTALL_DIR}/clientd.py
 Restart=on-failure
 Environment=CLIENTD_SECRET=${CLIENTD_SECRET}
+# Load additional environment variables from config file
+EnvironmentFile=-/etc/internetcafe-clientd.conf
 
 [Install]
 WantedBy=multi-user.target
