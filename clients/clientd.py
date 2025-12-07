@@ -9,6 +9,7 @@ import requests
 import cups
 import os
 import sys
+import subprocess
 from datetime import datetime
 
 def load_config_file(path):
@@ -24,9 +25,13 @@ def load_config_file(path):
                     continue
                 if '=' in line:
                     key, value = line.split('=', 1)
-                    # Remove quotes if present
-                    value = value.strip().strip('"').strip("'")
-                    config[key.strip()] = value
+                    key = key.strip()
+                    value = value.strip()
+                    # Remove surrounding quotes if present (single or double)
+                    if len(value) >= 2:
+                        if (value[0] == '"' and value[-1] == '"') or (value[0] == "'" and value[-1] == "'"):
+                            value = value[1:-1]
+                    config[key] = value
     except Exception as e:
         print(f"Warning: Failed to load config from {path}: {e}", file=sys.stderr)
     return config
@@ -128,13 +133,30 @@ class ClientDaemon:
                 current_user = os.getenv('USER') or os.getenv('LOGNAME')
             
             if current_user:
-                ret = os.system(f"loginctl terminate-user {current_user} || true")
-                if ret != 0:
-                    print(f"Warning: Failed to terminate user {current_user}", file=sys.stderr)
+                # Validate username to prevent command injection (alphanumeric, dash, underscore only)
+                if current_user and all(c.isalnum() or c in '-_' for c in current_user):
+                    try:
+                        result = subprocess.run(['loginctl', 'terminate-user', current_user], 
+                                              capture_output=True, text=True, timeout=10)
+                        if result.returncode != 0 and result.returncode != 1:
+                            # returncode 1 might mean user not logged in, which is ok
+                            print(f"Warning: Failed to terminate user {current_user}: {result.stderr}", file=sys.stderr)
+                    except subprocess.TimeoutExpired:
+                        print(f"Warning: Timeout terminating user {current_user}", file=sys.stderr)
+                    except Exception as e:
+                        print(f"Warning: Error terminating user {current_user}: {e}", file=sys.stderr)
+                else:
+                    print(f"Warning: Invalid username format: {current_user}", file=sys.stderr)
         elif state == 'pause':
-            ret = os.system("loginctl lock-session || true")
-            if ret != 0:
-                print("Warning: Failed to lock session", file=sys.stderr)
+            try:
+                result = subprocess.run(['loginctl', 'lock-session'], 
+                                      capture_output=True, text=True, timeout=10)
+                if result.returncode != 0 and result.returncode != 1:
+                    print(f"Warning: Failed to lock session: {result.stderr}", file=sys.stderr)
+            except subprocess.TimeoutExpired:
+                print("Warning: Timeout locking session", file=sys.stderr)
+            except Exception as e:
+                print(f"Warning: Error locking session: {e}", file=sys.stderr)
         # further logic: starting->prepare kiosk, frei->allow login, gast->allow guest login
 
     def run(self):
