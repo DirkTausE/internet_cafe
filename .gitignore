@@ -15,4 +15,10 @@ Thumbs.dbserver/files.zip
 BACKUP.php
 *.bak
 *.orig
-*~ git add .gitignore
+*~
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
