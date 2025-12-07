@@ -10,6 +10,7 @@ import cups
 import os
 import sys
 import subprocess
+import getpass
 from datetime import datetime
 
 def load_config_file(path):
@@ -27,9 +28,10 @@ def load_config_file(path):
                     key, value = line.split('=', 1)
                     key = key.strip()
                     value = value.strip()
-                    # Remove surrounding quotes if present (single or double)
+                    # Remove surrounding quotes if present (both must be the same type)
                     if len(value) >= 2:
-                        if (value[0] == '"' and value[-1] == '"') or (value[0] == "'" and value[-1] == "'"):
+                        if (value.startswith('"') and value.endswith('"')) or \
+                           (value.startswith("'") and value.endswith("'")):
                             value = value[1:-1]
                     config[key] = value
     except Exception as e:
@@ -105,6 +107,7 @@ class ClientDaemon:
         self.last_job_ids = current_ids
 
     def checkin_state(self):
+        state = None  # Initialize state to avoid NameError
         try:
             r = requests.get(SERVER_URL + "pc/get_state", params={'host': HOSTNAME}, timeout=5)
             if r.status_code == 200:
@@ -115,8 +118,9 @@ class ClientDaemon:
                 # optional: if state instructs logout/lock, do it
                 self.apply_state(state)
             # post back last_checkin
-            headers = {'X-API-KEY': API_KEY}
-            requests.post(SERVER_URL + "pc/set_state", json={'host': HOSTNAME, 'state': state}, headers=headers, timeout=5)
+            if state is not None:
+                headers = {'X-API-KEY': API_KEY}
+                requests.post(SERVER_URL + "pc/set_state", json={'host': HOSTNAME, 'state': state}, headers=headers, timeout=5)
         except Exception as e:
             print("checkin error", e)
 
@@ -127,14 +131,14 @@ class ClientDaemon:
         if state in ('stop', 'off'):
             # log out all users - get current user safely
             try:
-                current_user = os.getlogin()
-            except OSError:
-                # Fallback if os.getlogin() fails
+                current_user = getpass.getuser()
+            except Exception:
+                # Fallback to environment variables if getuser() fails
                 current_user = os.getenv('USER') or os.getenv('LOGNAME')
             
             if current_user:
                 # Validate username to prevent command injection (alphanumeric, dash, underscore only)
-                if current_user and all(c.isalnum() or c in '-_' for c in current_user):
+                if all(c.isalnum() or c in '-_' for c in current_user):
                     try:
                         result = subprocess.run(['loginctl', 'terminate-user', current_user], 
                                               capture_output=True, text=True, timeout=10)
