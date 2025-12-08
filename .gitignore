@@ -16,3 +16,4 @@ BACKUP.php
 *.bak
 *.orig
 *~ git add .gitignore
+__pycache__

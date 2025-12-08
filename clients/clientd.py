@@ -2,9 +2,6 @@
 # clients/clientd.py
 # Client daemon: read secrets from env or /etc/internetcafe-clientd.conf,
 # normalize states to canonical lowercase values and use portable defaults.
-#
-# No secrets are committed here. Provide CLIENTD_SECRET and API_KEY via
-# environment variables or /etc/internetcafe-clientd.conf on the host.
 
 import os
 import json
@@ -29,7 +26,7 @@ LOG.addHandler(ch)
 
 CONFIG_FILE = "/etc/internetcafe-clientd.conf"
 
-# load config helper
+
 def load_conf(path: str) -> dict:
     cfg = {}
     if not os.path.isfile(path):
@@ -49,6 +46,7 @@ def load_conf(path: str) -> dict:
     except Exception as e:
         LOG.warning("Failed to read config %s: %s", path, e)
     return cfg
+
 
 conf = load_conf(CONFIG_FILE)
 CLIENTD_SECRET = os.getenv("CLIENTD_SECRET") or conf.get("CLIENTD_SECRET") or ""
@@ -106,7 +104,6 @@ def normalize_state(raw) -> Optional[str]:
     for k, v in _CANON_STATES.items():
         if k in s:
             return v
-    # numeric heuristics
     if s.isdigit():
         if int(s) == 1:
             return "starting"
@@ -120,7 +117,6 @@ def send_api(endpoint: str, payload: dict) -> Optional[dict]:
     if API_KEY:
         headers["X-API-KEY"] = API_KEY
     try:
-        # lazy import requests
         import requests  # type: ignore
 
         url = SERVER_URL + endpoint
@@ -130,7 +126,6 @@ def send_api(endpoint: str, payload: dict) -> Optional[dict]:
         except Exception:
             return {"http_status": r.status_code, "text": r.text}
     except Exception:
-        # fallback: curl subprocess (best-effort)
         cmd = ["curl", "-sS", "-X", "POST", "-H", "Content-Type: application/json"]
         for k, v in headers.items():
             cmd.extend(["-H", f"{k}: {v}"])
@@ -189,11 +184,21 @@ class ClientDaemon:
         for jid in new_ids:
             try:
                 attrs = self.cups_conn.getJobAttributes(jid)
-                pages = int(attrs.get("job-media-sheets", attrs.get("page-count", 0)) or 0)
+                pages = int(
+                    attrs.get("job-media-sheets", attrs.get("page-count", 0)) or 0
+                )
                 job_name = attrs.get("job-name", str(jid))
                 user = attrs.get("job-originating-user-name", None)
-                payload = {"host": HOSTNAME, "job_name": job_name, "pages": pages, "user": user}
-                LOG.info("Found print job -> sending to server: %s", payload)
+                payload = {
+                    "host": HOSTNAME,
+                    "job_name": job_name,
+                    "pages": pages,
+                    "user": user,
+                }
+                LOG.info(
+                    "Found print job -> sending to server: %s",
+                    payload,
+                )
                 res = send_api("print/job", payload)
                 LOG.info("Server response: %s", res)
             except Exception as e:
@@ -208,7 +213,6 @@ class ClientDaemon:
                 state = normalize_state(state_raw)
                 if state is not None:
                     self.apply_state(state)
-                # post back last checkin if needed
                 send_api("pc/set_state", {"host": HOSTNAME, "state": state})
         except Exception as e:
             LOG.debug("checkin_state error: %s", e)
@@ -223,20 +227,28 @@ class ClientDaemon:
 
         if state in ("stop", "off"):
             try:
-                subprocess.run(["loginctl", "terminate-user", user], check=False, timeout=10)
+                subprocess.run(
+                    ["loginctl", "terminate-user", user],
+                    check=False,
+                    timeout=10,
+                )
                 LOG.info("Requested termination of sessions for user %s", user)
             except Exception as e:
                 LOG.warning("Could not terminate-user: %s", e)
         elif state == "pause":
             try:
-                subprocess.run(["loginctl", "lock-session"], check=False, timeout=10)
+                subprocess.run(
+                    ["loginctl", "lock-session"], check=False, timeout=10
+                )
                 LOG.info("Requested lock-session for user %s", user)
             except Exception as e:
                 LOG.warning("Could not lock-session: %s", e)
         elif state == "starting":
             LOG.info("Received starting state: no-op for agent.")
         elif state in ("frei", "gast", "wartung"):
-            LOG.info("State %s applied (no direct system action configured).", state)
+            LOG.info(
+                "State %s applied (no direct system action configured).", state
+            )
         else:
             LOG.debug("Unknown state received: %s", state)
 

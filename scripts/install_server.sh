@@ -123,7 +123,7 @@ IMPORT_SQL_ANS=${IMPORT_SQL_ANS:-Y}
 if [[ "${IMPORT_SQL_ANS^^}" == "Y" || "${IMPORT_SQL_ANS^^}" == "YES" ]] && [ -f "${DEFAULT_INIT_SQL}" ]; then
   echoinfo "Importing ${DEFAULT_INIT_SQL} into ${DB_NAME}..."
   if [[ "${MYSQL_CMD}" == "sudo mysql" ]]; then
-    sudo mysql "${DB_NAME}" < "${DEFAULT_INIT_SQL}"
+    sudo sh -c "mysql '${DB_NAME}' < '${DEFAULT_INIT_SQL}'"
   else
     mysql -u root -p "${DB_NAME}" < "${DEFAULT_INIT_SQL}"
   fi
@@ -221,7 +221,7 @@ EOF
   chmod 600 "${APP_MYCNF_PATH}"
   # set owner if file is in a user's home
   if [ -d "/home/${APP_USER}" ]; then
-    chown ${APP_USER}:${APP_USER} "${APP_MYCNF_PATH}"
+    chown "${APP_USER}:${APP_USER}" "${APP_MYCNF_PATH}"
   fi
 fi
 
