@@ -148,10 +148,8 @@ class ClientDaemon:
         
         if state in ('stop', 'off'):
             # log out all users
-            try:
-                current_user = os.getlogin()
-            except OSError:
-                current_user = getpass.getuser()
+            # Use getpass.getuser() instead of os.getlogin() for better systemd compatibility
+            current_user = getpass.getuser()
             
             try:
                 result = subprocess.run(
