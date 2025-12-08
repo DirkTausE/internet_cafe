@@ -134,16 +134,21 @@ chown -R "${SERVICE_USER}":"${SERVICE_USER}" "${INSTALL_DIR}/actions"
 chmod 750 "${INSTALL_DIR}/actions/set_state.sh"
 
 # Create systemd service file
-read -rp "Create CLIENTD_SECRET automatically? [Y/n]: " CREATE_CLIENTD_SECRET
-CREATE_CLIENTD_SECRET=${CREATE_CLIENTD_SECRET:-Y}
+read -rp "Create CLIENTD_SECRET and API_KEY automatically? [Y/n]: " CREATE_SECRETS
+CREATE_SECRETS=${CREATE_SECRETS:-Y}
 CLIENTD_SECRET=""
-if [[ "${CREATE_CLIENTD_SECRET^^}" == "Y" || "${CREATE_CLIENTD_SECRET^^}" == "YES" ]]; then
+API_KEY=""
+if [[ "${CREATE_SECRETS^^}" == "Y" || "${CREATE_SECRETS^^}" == "YES" ]]; then
   CLIENTD_SECRET=$(openssl rand -base64 24 || head -c 32 /dev/urandom | base64)
-  echoinfo "Generated CLIENTD_SECRET."
-  # write to /etc/internetcafe-clientd.conf for server to read (if not already)
+  API_KEY=$(openssl rand -base64 24 || head -c 32 /dev/urandom | base64)
+  echoinfo "Generated CLIENTD_SECRET and API_KEY."
+  # write to /etc/internetcafe-clientd.conf for service to read (if not already)
   if [ ! -f /etc/internetcafe-clientd.conf ]; then
     cat > /etc/internetcafe-clientd.conf <<EOF
+# Internetcafe Client Configuration
+# This file is loaded by the clientd service via EnvironmentFile
 CLIENTD_SECRET="${CLIENTD_SECRET}"
+API_KEY="${API_KEY}"
 EOF
     chmod 600 /etc/internetcafe-clientd.conf
     echoinfo "Wrote /etc/internetcafe-clientd.conf (mode 600)."
@@ -152,6 +157,7 @@ EOF
   fi
 else
   read -rp "Enter desired CLIENTD_SECRET: " CLIENTD_SECRET
+  read -rp "Enter desired API_KEY: " API_KEY
 fi
 
 SERVICE_FILE="/etc/systemd/system/clientd.service"
@@ -167,7 +173,8 @@ Group=${SERVICE_USER}
 WorkingDirectory=${INSTALL_DIR}
 ExecStart=${INSTALL_DIR}/venv/bin/python ${INSTALL_DIR}/clientd.py
 Restart=on-failure
-Environment=CLIENTD_SECRET=${CLIENTD_SECRET}
+# Load environment variables from config file
+EnvironmentFile=-/etc/internetcafe-clientd.conf
 
 [Install]
 WantedBy=multi-user.target
@@ -183,6 +190,8 @@ echoinfo "Actions directory: ${INSTALL_DIR}/actions"
 echoinfo "Sample action: set_state writes to /tmp/clientd-demo/last-set-state.json and /var/lib/clientd/state.json"
 echoinfo "Client secret (store safely):"
 echo "${CLIENTD_SECRET}"
+echoinfo "API Key (store safely):"
+echo "${API_KEY}"
 echoinfo "Test with curl from server:"
 echoinfo "curl -v -H \"Authorization: Bearer ${CLIENTD_SECRET}\" -H \"Content-Type: application/json\" -d '{\"action\":\"set_state\",\"state\":\"wartung\"}' http://<client-ip>:${AGENT_PORT}/action"
 
