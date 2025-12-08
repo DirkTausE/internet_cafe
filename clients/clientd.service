@@ -4,11 +4,15 @@ After=network.target
 
 [Service]
 Type=simple
-User=surfer
-Group=surfer
-ExecStart=/usr/bin/env python3 /home/surfer/Desktop/Projekte/internet_cafe/clients/clientd.py
+# Change User/Group to match your installation (default: clientd)
+User=clientd
+Group=clientd
+# Update paths below if you installed to a different location
+ExecStart=/opt/clientd/venv/bin/python /opt/clientd/clientd.py
 Restart=on-failure
 RestartSec=5
+# Load environment variables (API_KEY, CLIENTD_SECRET) from config file
+EnvironmentFile=-/etc/internetcafe-clientd.conf
 
 [Install]
 WantedBy=multi-user.target

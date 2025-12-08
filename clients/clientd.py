@@ -8,10 +8,65 @@ import socket
 import requests
 import cups
 import os
+import subprocess
+import getpass
 from datetime import datetime
 
+def load_conf(path):
+    """Load configuration from a KEY=VALUE file, skipping comments."""
+    conf = {}
+    if not os.path.exists(path):
+        return conf
+    try:
+        with open(path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    # Remove quotes if present
+                    value = value.strip().strip('"').strip("'")
+                    conf[key.strip()] = value
+    except Exception as e:
+        print(f"Warning: Could not load config from {path}: {e}")
+    return conf
+
+def normalize_state(state):
+    """Normalize state to lowercase canonical values."""
+    if state is None:
+        return None
+    state_lower = str(state).lower()
+    # Map synonyms to canonical values
+    state_map = {
+        'starting': 'starting',
+        'frei': 'frei',
+        'gast': 'gast',
+        'pause': 'pause',
+        'wartung': 'wartung',
+        'stop': 'stop',
+        'off': 'off'
+    }
+    return state_map.get(state_lower, state_lower)
+
+# Load configuration
+# Priority: 1) Environment variables, 2) /etc/internetcafe-clientd.conf
+API_KEY = os.getenv('API_KEY')
+CLIENTD_SECRET = os.getenv('CLIENTD_SECRET')
+
+if not API_KEY or not CLIENTD_SECRET:
+    conf = load_conf('/etc/internetcafe-clientd.conf')
+    if not API_KEY:
+        API_KEY = conf.get('API_KEY')
+    if not CLIENTD_SECRET:
+        CLIENTD_SECRET = conf.get('CLIENTD_SECRET')
+
+if not API_KEY:
+    print("Warning: API_KEY not set. API calls may fail.")
+if not CLIENTD_SECRET:
+    print("Warning: CLIENTD_SECRET not set.")
+
 SERVER_URL = "http://server.local/api.php?q="
-API_KEY = "CHANGE_ME_API_KEY"
 HOSTNAME = socket.gethostname()
 CHECKIN_INTERVAL = 15
 PRINT_POLL_INTERVAL = 5
@@ -87,11 +142,40 @@ class ClientDaemon:
             print("checkin error", e)
 
     def apply_state(self, state):
-        if state in ('STOP','OFF'):
+        state = normalize_state(state)
+        if not state:
+            return
+        
+        if state in ('stop', 'off'):
             # log out all users
-            os.system("loginctl terminate-user $(whoami) || true")
+            try:
+                current_user = os.getlogin()
+            except OSError:
+                current_user = getpass.getuser()
+            
+            try:
+                result = subprocess.run(
+                    ['loginctl', 'terminate-user', current_user],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    print(f"Warning: loginctl terminate-user failed: {result.stderr}")
+            except Exception as e:
+                print(f"Error terminating user: {e}")
         elif state == 'pause':
-            os.system("loginctl lock-session || true")
+            try:
+                result = subprocess.run(
+                    ['loginctl', 'lock-session'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    print(f"Warning: loginctl lock-session failed: {result.stderr}")
+            except Exception as e:
+                print(f"Error locking session: {e}")
         # further logic: starting->prepare kiosk, frei->allow login, gast->allow guest login
 
     def run(self):
