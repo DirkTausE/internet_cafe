@@ -4,9 +4,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=surfer
-Group=surfer
-ExecStart=/usr/bin/env python3 /home/surfer/Desktop/Projekte/internet_cafe/clients/clientd.py
+# Use a portable installation path (/opt/clientd). Adjust ExecStart if you installed elsewhere.
+User=clientd
+Group=clientd
+EnvironmentFile=-/etc/internetcafe-clientd.conf
+ExecStart=/opt/clientd/venv/bin/python /opt/clientd/clientd.py
 Restart=on-failure
 RestartSec=5
 
