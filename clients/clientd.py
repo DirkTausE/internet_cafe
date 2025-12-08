@@ -57,9 +57,7 @@ class ClientDaemon:
         current_ids = set(jobs.keys())
         new_ids = current_ids - self.last_job_ids
         for jid in new_ids:
-            # job fields example: 'pages', 'job-name',
-            # 'job-originating-user-name', 'copies'
-            # A safer approach: query job attributes
+            # Query job attributes to get details
             attrs = self.cups_conn.getJobAttributes(jid)
             pages = int(
                 attrs.get(
