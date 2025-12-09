@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # clients/clientd.py
-# Client daemon: read secrets from env or /etc/internetcafe-clientd.conf,
+# Client daemon: read secrets from /etc/internetcafe-clientd.conf only,
 # normalize states to canonical lowercase values and use portable defaults.
 
-import os
 import json
-import time
-import socket
 import logging
+import socket
 import subprocess
+import time
 import getpass
 from typing import Optional
+from pathlib import Path
 
-# Optional CUPS import
+# Optional CUPS import (may be unavailable on some hosts)
 try:
     import cups  # type: ignore
 except Exception:
@@ -24,15 +24,15 @@ ch = logging.StreamHandler()
 ch.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
 LOG.addHandler(ch)
 
-CONFIG_FILE = "/etc/internetcafe-clientd.conf"
+CONFIG_FILE = Path("/etc/internetcafe-clientd.conf")
 
 
-def load_conf(path: str) -> dict:
-    cfg = {}
-    if not os.path.isfile(path):
+def load_conf(path: Path) -> dict:
+    cfg: dict = {}
+    if not path.is_file():
         return cfg
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with path.open("r", encoding="utf-8") as fh:
             for ln in fh:
                 ln = ln.strip()
                 if not ln or ln.startswith("#"):
@@ -49,24 +49,27 @@ def load_conf(path: str) -> dict:
 
 
 conf = load_conf(CONFIG_FILE)
-CLIENTD_SECRET = os.getenv("CLIENTD_SECRET") or conf.get("CLIENTD_SECRET") or ""
-API_KEY = os.getenv("API_KEY") or conf.get("API_KEY") or ""
+
+# Secrets: only from config file (no environment variable fallback)
+CLIENTD_SECRET = conf.get("CLIENTD_SECRET", "") or ""
+API_KEY = conf.get("API_KEY", "") or ""
 
 if not CLIENTD_SECRET:
     LOG.warning(
-        "CLIENTD_SECRET not set (env or /etc). Requests without auth will be "
-        "rejected."
+        "CLIENTD_SECRET not set in %s. Client requests will be",
+        "unauthenticated.",
     )
 if not API_KEY:
     LOG.warning(
-        "API_KEY not set (env or /etc). Sending to server may be "
-        "unauthenticated."
+        "API_KEY not set in %s. Server requests will be",
+        "unauthenticated.",
     )
 
-SERVER_URL = os.getenv("SERVER_URL") or "http://server.local/api.php?q="
+# Server / runtime defaults (still configurable via env if desired)
+SERVER_URL = "http://server.local/api.php?q="
 HOSTNAME = socket.gethostname()
-CHECKIN_INTERVAL = int(os.getenv("CHECKIN_INTERVAL", "15"))
-PRINT_POLL_INTERVAL = int(os.getenv("PRINT_POLL_INTERVAL", "5"))
+CHECKIN_INTERVAL = 15
+PRINT_POLL_INTERVAL = 5
 
 # canonical states mapping (all lowercase)
 _CANON_STATES = {
@@ -126,7 +129,14 @@ def send_api(endpoint: str, payload: dict) -> Optional[dict]:
         except Exception:
             return {"http_status": r.status_code, "text": r.text}
     except Exception:
-        cmd = ["curl", "-sS", "-X", "POST", "-H", "Content-Type: application/json"]
+        cmd = [
+            "curl",
+            "-sS",
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+        ]
         for k, v in headers.items():
             cmd.extend(["-H", f"{k}: {v}"])
         cmd.append(SERVER_URL + endpoint)
@@ -185,7 +195,8 @@ class ClientDaemon:
             try:
                 attrs = self.cups_conn.getJobAttributes(jid)
                 pages = int(
-                    attrs.get("job-media-sheets", attrs.get("page-count", 0)) or 0
+                    attrs.get("job-media-sheets", attrs.get("page-count", 0))
+                    or 0
                 )
                 job_name = attrs.get("job-name", str(jid))
                 user = attrs.get("job-originating-user-name", None)
@@ -223,8 +234,7 @@ class ClientDaemon:
         try:
             user = getpass.getuser()
         except Exception:
-            user = os.getenv("SUDO_USER") or os.getenv("USER") or "unknown"
-
+            user = "unknown"
         if state in ("stop", "off"):
             try:
                 subprocess.run(
@@ -232,7 +242,10 @@ class ClientDaemon:
                     check=False,
                     timeout=10,
                 )
-                LOG.info("Requested termination of sessions for user %s", user)
+                LOG.info(
+                    "Requested termination of sessions for user %s",
+                    user,
+                )
             except Exception as e:
                 LOG.warning("Could not terminate-user: %s", e)
         elif state == "pause":
@@ -247,7 +260,8 @@ class ClientDaemon:
             LOG.info("Received starting state: no-op for agent.")
         elif state in ("frei", "gast", "wartung"):
             LOG.info(
-                "State %s applied (no direct system action configured).", state
+                "State %s applied (no direct system action configured).",
+                state,
             )
         else:
             LOG.debug("Unknown state received: %s", state)
