@@ -1,16 +1,12 @@
 [Unit]
-Description=Internetcafe Client Daemon (clientd)
+Description=Internetcafe Client Daemon
 After=network.target
 
 [Service]
 Type=simple
-# Use a portable installation path (/opt/clientd). Adjust ExecStart if you installed elsewhere.
-User=clientd
-Group=clientd
-EnvironmentFile=-/etc/internetcafe-clientd.conf
-ExecStart=/opt/clientd/venv/bin/python /opt/clientd/clientd.py
+ExecStart=/usr/bin/python3 /opt/internetcafe/clientd.py
 Restart=on-failure
-RestartSec=5
+User=root
 
 [Install]
 WantedBy=multi-user.target
