@@ -347,6 +347,114 @@ CREATE TABLE `users` (
   UNIQUE KEY `username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping events for database 'internetcafe'
+--
+
+--
+-- Dumping routines for database 'internetcafe'
+--
+/*!50003 DROP PROCEDURE IF EXISTS `__internetcafe_ensure_computers_state__` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE  PROCEDURE `__internetcafe_ensure_computers_state__`()
+BEGIN
+  DECLARE cnt INT DEFAULT 0;
+
+  
+  SELECT COUNT(*) INTO cnt
+    FROM information_schema.COLUMNS
+   WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 'computers'
+     AND COLUMN_NAME = 'state';
+  IF cnt = 0 THEN
+    ALTER TABLE `computers`
+      ADD COLUMN `state` VARCHAR(32) NOT NULL DEFAULT 'frei';
+  END IF;
+
+  
+  SELECT COUNT(*) INTO cnt
+    FROM information_schema.COLUMNS
+   WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 'computers'
+     AND COLUMN_NAME = 'is_on';
+  IF cnt > 0 THEN
+    
+    UPDATE `computers`
+     SET `state` = 'frei'
+     WHERE (`state` IS NULL OR `state` = '')
+       AND (
+         `is_on` IN (1,'1')
+         OR LOWER(CAST(`is_on` AS CHAR)) IN ('true','on','online','up')
+       );
+
+    
+    UPDATE `computers`
+     SET `state` = 'off'
+     WHERE (`state` IS NULL OR `state` = '')
+       AND (
+         `is_on` IN (0,'0')
+         OR LOWER(CAST(`is_on` AS CHAR)) IN ('false','off','down')
+       );
+  END IF;
+
+  
+  SELECT COUNT(*) INTO cnt
+    FROM information_schema.COLUMNS
+   WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 'computers'
+     AND COLUMN_NAME = 'status';
+  IF cnt > 0 THEN
+    UPDATE `computers`
+     SET `state` = 'gast'
+     WHERE (`state` IS NULL OR `state` = '')
+       AND LOWER(CAST(`status` AS CHAR)) LIKE '%guest%';
+
+    UPDATE `computers`
+     SET `state` = 'wartung'
+     WHERE (`state` IS NULL OR `state` = '')
+       AND LOWER(CAST(`status` AS CHAR)) REGEXP 'maint|wartung';
+
+    UPDATE `computers`
+     SET `state` = 'pause'
+     WHERE (`state` IS NULL OR `state` = '')
+       AND LOWER(CAST(`status` AS CHAR)) LIKE '%pause%';
+
+    UPDATE `computers`
+     SET `state` = 'starting'
+     WHERE (`state` IS NULL OR `state` = '')
+       AND LOWER(CAST(`status` AS CHAR)) REGEXP 'start|boot';
+
+    UPDATE `computers`
+     SET `state` = 'stop'
+     WHERE (`state` IS NULL OR `state` = '')
+       AND LOWER(CAST(`status` AS CHAR)) LIKE '%stop%';
+
+    UPDATE `computers`
+     SET `state` = 'off'
+     WHERE (`state` IS NULL OR `state` = '')
+       AND LOWER(CAST(`status` AS CHAR)) LIKE '%off%';
+  END IF;
+
+  
+  UPDATE `computers`
+   SET `state` = 'frei'
+   WHERE `state` IS NULL OR `state` = '';
+
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -357,4 +465,4 @@ CREATE TABLE `users` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-12-07 14:26:51
+-- Dump completed on 2025-12-07 19:28:16
