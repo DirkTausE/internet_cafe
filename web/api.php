@@ -1,163 +1,143 @@
 <?php
-// web/api.php - minimal API for internet_cafe
-// Endpoints: ?q=ping, ?q=status, ?q=version
-// Also supports action=... for client.d requests (POST or GET)
-// API key support: X-API-KEY header or ?api_key=... if configured in config.php
+// api.php - einfache API Endpoints (Erweiterung des Skeletons).
+// Benutze als: http://server.local/api.php?q=<endpoint>
+// WICHTIG: Vor Produktion Authentifizierung & Input Validation ergänzen.
 
-declare(strict_types=1);
+require_once __DIR__.'/db.php';
+require_once __DIR__.'/functions.php';
+require_once __DIR__.'/config.php';
 
 header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
 
-// Load optional config (do not raise errors if not present)
-$expectedApiKey = null;
-$apiKeyRequired = false;
-$appVersion = '0.1.0';
-$appName = 'internetcafe';
-$configPath = __DIR__ . '/../config.php';
-if (file_exists($configPath)) {
-    @include $configPath;
-    if (defined('API_KEY')) {
-        $expectedApiKey = API_KEY;
-        $apiKeyRequired = true;
-    } elseif (isset($config) && is_array($config) && isset($config['api_key'])) {
-        $expectedApiKey = $config['api_key'];
-        $apiKeyRequired = true;
-    }
-    if (defined('APP_VERSION')) {
-        $appVersion = APP_VERSION;
-    } elseif (isset($config['version'])) {
-        $appVersion = (string)$config['version'];
-    }
-    if (defined('APP_NAME')) {
-        $appName = APP_NAME;
-    } elseif (isset($config['name'])) {
-        $appName = (string)$config['name'];
+$pdo = getDb();
+$path = $_GET['q'] ?? '';
+$method = $_SERVER['REQUEST_METHOD'];
+
+/* Simple API key check for clients */
+function require_api_key() {
+    $headers = getallheaders();
+    $provided = $_SERVER['HTTP_X_API_KEY'] ?? ($headers['X-API-KEY'] ?? ($_GET['api_key'] ?? null));
+    if (!$provided || $provided !== API_KEY) {
+        http_response_code(403);
+        echo json_encode(['error' => 'invalid_api_key']);
+        exit;
     }
 }
 
-// Helper: read git short sha if available (optional)
-$gitSha = null;
-$gitHeadFile = __DIR__ . '/../.git/HEAD';
-if (is_readable($gitHeadFile)) {
-    $head = trim(@file_get_contents($gitHeadFile));
-    if (preg_match('/^ref: (.+)$/', $head, $m)) {
-        $ref = __DIR__ . '/../.git/' . $m[1];
-        if (is_readable($ref)) {
-            $gitSha = substr(trim(@file_get_contents($ref)), 0, 12);
-        }
-    }
-}
-
-// API key check
-$providedKey = $_SERVER['HTTP_X_API_KEY'] ?? $_GET['api_key'] ?? null;
-if ($apiKeyRequired && !$providedKey) {
-    http_response_code(401);
-    echo json_encode(['error' => 'api_key_required']);
-    exit;
-}
-if ($apiKeyRequired && $expectedApiKey !== null && $providedKey !== $expectedApiKey) {
-    http_response_code(403);
-    echo json_encode(['error' => 'invalid_api_key']);
+/* GET pc/get_state?host=... */
+if ($path === 'pc/get_state' && $method === 'GET') {
+    $hostname = $_GET['host'] ?? null;
+    if (!$hostname) { http_response_code(400); echo json_encode(['error'=>'host required']); exit; }
+    $stmt = $pdo->prepare("SELECT id, hostname, current_state, last_checkin FROM computers WHERE hostname = ?");
+    $stmt->execute([$hostname]);
+    $row = $stmt->fetch();
+    if (!$row) { http_response_code(404); echo json_encode(['error'=>'not found']); exit; }
+    echo json_encode(['computer'=>$row]);
     exit;
 }
 
-// Read parameters (GET/POST), also accept JSON body for POST
-$q = $_GET['q'] ?? $_POST['q'] ?? null;
-$action = $_GET['action'] ?? $_POST['action'] ?? null;
-$inputJson = null;
-if (empty($q) && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $raw = file_get_contents('php://input');
-    if (!empty($raw)) {
-        $decoded = json_decode($raw, true);
-        if (json_last_error() === JSON_ERROR_NONE) {
-            $inputJson = $decoded;
-            if (isset($decoded['q'])) {
-                $q = $decoded['q'];
-            }
-            if (isset($decoded['action'])) {
-                $action = $decoded['action'];
-            }
-        }
-    }
-}
-
-// Simple Action handler for client.d requests
-class ActionHandler
-{
-    // Handle action and return an array to be json-encoded
-    public function handle(string $action, $params = null): array
-    {
-        // Add your action implementations here. Example placeholder actions:
-        switch ($action) {
-            case 'echo':
-                // returns whatever was sent
-                return ['ok' => true, 'action' => 'echo', 'data' => $params];
-            case 'status_check':
-                // lightweight status check for clients
-                return ['ok' => true, 'action' => 'status_check', 'time' => date('c')];
-            // Add actual client.d actions below, e.g. 'start_session', 'stop_session', ...
-            default:
-                return ['ok' => false, 'error' => 'unknown_action', 'action' => $action];
-        }
-    }
-}
-
-// Handler for q endpoints
-if ($q === 'ping') {
-    echo json_encode(['status' => 'ok', 'time' => date('c')]);
+/* POST pc/set_state  (client should use X-API-KEY)  */
+if ($path === 'pc/set_state' && $method === 'POST') {
+    require_api_key();
+    $data = json_decode(file_get_contents('php://input'), true);
+    if (empty($data['host']) || empty($data['state'])) { http_response_code(400); echo json_encode(['error'=>'host,state required']); exit; }
+    $allowed = ['starting','frei','gast','pause','wartung','STOP','OFF'];
+    if (!in_array($data['state'],$allowed)) { http_response_code(400); echo json_encode(['error'=>'bad state']); exit; }
+    $stmt = $pdo->prepare("UPDATE computers SET current_state=?, last_checkin=NOW() WHERE hostname=?");
+    $stmt->execute([$data['state'], $data['host']]);
+    echo json_encode(['ok'=>true]);
     exit;
 }
 
-if ($q === 'status') {
-    // Try to get system uptime (Linux) as an extra field, optional
-    $uptime = null;
-    if (is_readable('/proc/uptime')) {
-        $parts = preg_split('/\s+/', trim(@file_get_contents('/proc/uptime')));
-        if (isset($parts[0])) {
-            $uptime = (float)$parts[0];
-        }
-    }
-    $payload = [
-        'status' => 'ok',
-        'time' => date('c'),
-        'name' => $appName,
-        'version' => $appVersion,
-        'git' => $gitSha,
-        'uptime_seconds' => $uptime,
-    ];
-    echo json_encode($payload);
+/* POST session/start -> startet Session, legt Session row an. Optional: is_diako flag. */
+if ($path === 'session/start' && $method === 'POST') {
+    require_api_key();
+    $d = json_decode(file_get_contents('php://input'), true);
+    if (empty($d['host'])) { http_response_code(400); echo json_encode(['error'=>'host required']); exit; }
+    $is_diako = !empty($d['is_diako']);
+    // find computer
+    $stmt = $pdo->prepare("SELECT id FROM computers WHERE hostname=?");
+    $stmt->execute([$d['host']]);
+    $comp = $stmt->fetch();
+    if (!$comp) { http_response_code(404); echo json_encode(['error'=>'unknown host']); exit; }
+    // determine price_per_min from tariffs (price_types + tariffs)
+    $typeCode = $is_diako ? 'diako' : 'normal';
+    $stmt = $pdo->prepare("SELECT t.price FROM tariffs t JOIN price_types pt ON pt.id=t.price_type_id WHERE pt.code=? AND t.service_code='pc_minute' LIMIT 1");
+    $stmt->execute([$typeCode]);
+    $row = $stmt->fetch();
+    $ppm = $row['price'] ?? 0.0;
+    $stmt = $pdo->prepare("INSERT INTO sessions (computer_id, customer_id, started_at, price_per_min) VALUES (?, NULL, NOW(), ?)");
+    $stmt->execute([$comp['id'], $ppm]);
+    $sid = $pdo->lastInsertId();
+    // set computer state to gast
+    $pdo->prepare("UPDATE computers SET current_state='gast', last_checkin=NOW() WHERE id=?")->execute([$comp['id']]);
+    echo json_encode(['session_id'=>$sid, 'price_per_min' => $ppm]);
     exit;
 }
 
-if ($q === 'version') {
-    $payload = [
-        'name' => $appName,
-        'version' => $appVersion,
-        'git' => $gitSha,
-        'time' => date('c'),
-    ];
-    echo json_encode($payload);
+/* POST session/end -> beendet Session und berechnet billed_minutes und total_price */
+if ($path === 'session/end' && $method === 'POST') {
+    require_api_key();
+    $d = json_decode(file_get_contents('php://input'), true);
+    if (empty($d['session_id'])) { http_response_code(400); echo json_encode(['error'=>'session_id required']); exit; }
+    // fetch session
+    $stmt = $pdo->prepare("SELECT * FROM sessions WHERE id=?");
+    $stmt->execute([$d['session_id']]);
+    $s = $stmt->fetch();
+    if (!$s) { http_response_code(404); echo json_encode(['error'=>'session not found']); exit; }
+    if ($s['ended_at']) { http_response_code(400); echo json_encode(['error'=>'already ended']); exit; }
+    $started = new DateTime($s['started_at']);
+    $ended = new DateTime(); // now
+    $mins = max(1, (int)ceil(($ended->getTimestamp() - $started->getTimestamp())/60));
+    $total = $mins * (float)$s['price_per_min'];
+    $stmt = $pdo->prepare("UPDATE sessions SET ended_at=NOW(), billed_minutes=?, total_price=? WHERE id=?");
+    $stmt->execute([$mins, $total, $d['session_id']]);
+    echo json_encode(['ok'=>true, 'billed_minutes'=>$mins, 'total_price'=>$total]);
     exit;
 }
 
-// Handle action=... (client.d)
-if (!empty($action)) {
-    $handler = new ActionHandler();
-    // Prefer JSON body params if available, else GET/POST params
-    $params = $inputJson['params'] ?? $_POST['params'] ?? $_GET['params'] ?? null;
-    // If params is JSON string, attempt decode
-    if (is_string($params)) {
-        $decoded = json_decode($params, true);
-        if (json_last_error() === JSON_ERROR_NONE) {
-            $params = $decoded;
-        }
-    }
-    $result = $handler->handle((string)$action, $params);
-    echo json_encode($result);
+/* POST print/job - Client meldet Druckauftrag mit meta */
+if ($path === 'print/job' && $method === 'POST') {
+    require_api_key();
+    $d = json_decode(file_get_contents('php://input'), true);
+    if (empty($d['host']) || !isset($d['pages'])) { http_response_code(400); echo json_encode(['error'=>'host and pages required']); exit; }
+    // find computer
+    $stmt = $pdo->prepare("SELECT id FROM computers WHERE hostname=?");
+    $stmt->execute([$d['host']]);
+    $comp = $stmt->fetch();
+    if (!$comp) { http_response_code(404); echo json_encode(['error'=>'unknown host']); exit; }
+    // determine price: choose price_type normal by default unless is_diako flag
+    $is_diako = !empty($d['is_diako']);
+    $typeCode = $is_diako ? 'diako' : 'normal';
+    $priceTypeStmt = $pdo->prepare("SELECT id FROM price_types WHERE code=? LIMIT 1");
+    $priceTypeStmt->execute([$typeCode]);
+    $pt = $priceTypeStmt->fetch();
+    $ptid = $pt['id'] ?? null;
+    // get per-page prices
+    $stmt = $pdo->prepare("SELECT service_code, price FROM tariffs WHERE price_type_id=? AND service_code IN ('print_bw','print_color','scan_page')");
+    $stmt->execute([$ptid]);
+    $tariffs = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    $pages = (int)$d['pages'];
+    $color = !empty($d['color']) ? (int)$d['color'] : 0;
+    $bw = $pages - $color;
+    $price = ($bw * ($tariffs['print_bw'] ?? 0.0)) + ($color * ($tariffs['print_color'] ?? 0.0));
+    // insert print_job
+    $stmt = $pdo->prepare("INSERT INTO print_jobs (computer_id, user_description, pages, color_pages, bw_pages, copies, price, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
+    $stmt->execute([$comp['id'], $d['job_name'] ?? null, $pages, $color, $bw, $d['copies'] ?? 1, $price]);
+    $jobId = $pdo->lastInsertId();
+    echo json_encode(['job_id'=>$jobId, 'price'=>$price]);
     exit;
 }
 
-// Default: invalid request
-http_response_code(400);
-echo json_encode(['error' => 'invalid_request', 'usage' => '?q=ping|status|version or action=...']);
+/* GET blocklist/get -> gibt aktive Muster zurück */
+if ($path === 'blocklist/get' && $method === 'GET') {
+    $stmt = $pdo->query("SELECT pattern FROM blocked_sites WHERE enabled=1");
+    $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    echo json_encode(['patterns'=>$rows]);
+    exit;
+}
+
+/* Simple fallback */
+http_response_code(404);
+echo json_encode(['error'=>'unknown endpoint']);
+exit;

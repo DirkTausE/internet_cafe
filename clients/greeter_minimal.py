@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-# Minimal greeter for testing
+# clients/greeter_minimal.py - Zeigt nur Hintergrund (GTK3)
+import gi, sys, os
+gi.require_version('Gtk','3.0')
+from gi.repository import Gtk, GdkPixbuf
 
-import socket
-import sys
+DEFAULT_BG = '/usr/share/backgrounds/xfce/xfce-blue.jpg'
+img = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_BG
 
-
-def main(argv):
-    name = argv[1] if len(argv) > 1 else "guest"
-    print(f"Hello {name} from {socket.gethostname()}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main(sys.argv))
+win = Gtk.Window()
+win.set_decorated(False)
+win.fullscreen()
+if os.path.exists(img):
+    pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(img, 1920, 1080, False)
+    win.add(Gtk.Image.new_from_pixbuf(pixbuf))
+else:
+    win.add(Gtk.Label(label="Hintergrundbild nicht gefunden"))
+win.connect("destroy", Gtk.main_quit)
+win.show_all()
+Gtk.main()

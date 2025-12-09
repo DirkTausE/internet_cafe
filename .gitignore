@@ -12,8 +12,3 @@ config.php
 /vendor/
 .DS_Store
 Thumbs.dbserver/files.zip
-BACKUP.php
-*.bak
-*.orig
-*~ git add .gitignore
-__pycache__
