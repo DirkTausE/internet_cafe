@@ -11,9 +11,16 @@ config.php
 /node_modules/
 /vendor/
 .DS_Store
-Thumbs.dbserver/files.zip
+Thumbs.db
+server/files.zip
 BACKUP.php
 *.bak
 *.orig
-*~ git add .gitignore
-__pycache__
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
