@@ -1,131 +1,103 @@
-# Installation — Server (Internetcafe API)
+# Installation des Internet Cafe Servers (Ubuntu MATE)
 
-Ziel: schnelle, reproduzierbare Anleitung zum Aufsetzen des Servers für Tests (lokal / Test‑VM).  
-Diese Anleitung ist für Testzwecke ausgelegt (schnell startbar). Für Produktion siehe Hinweise am Ende.
+Dieses Dokument beschreibt die Schritte, um den Server für das Projekt "internet_cafe" auf Ubuntu MATE zu installieren und zu verifizieren. Es setzt voraus, dass du als Administrator (root oder sudo) arbeitest.
 
-Vorbedingungen (Test-Umgebung)
-- Debian/Ubuntu (20.04/22.04/24.04) oder ähnliche Linux‑Distribution
-- root / sudo‑Zugriff
-- MySQL / MariaDB installiert
-- PHP 8.3 CLI + mbstring (wir haben php8.3 verwendet)
-- Git (optional)
+Wesentliche Punkte
+- Zielsystem: Ubuntu MATE (Debian/Ubuntu Familie)
+- Benötigt: root / sudo, Internetzugang
+- Software: MySQL 8 (mysql-server), PHP 8.3.x, Apache2 (oder Nginx), rsync, curl
 
-Kurzübersicht der Schritte
-1. Systempakete installieren
-2. Repository/Code platzieren
-3. Datenbank anlegen & Schema importieren
-4. API‑Secret & Clientd‑Secret konfigurieren
-5. Webserver (Testmodus) starten
-6. Smoke‑Tests und Prüflisten
+Vorbereitung
+1. Repository auf dem Server auschecken (Pfad deiner Wahl, z. B. /opt/internetcafe):
+   sudo apt update && sudo apt upgrade -y
+   sudo apt install -y git
+   sudo git clone <repo-url> /opt/internetcafe
+   cd /opt/internetcafe
 
-1) Systempakete (Debian/Ubuntu)
-sudo apt update
-sudo apt install -y php8.3 php8.3-cli php8.3-mbstring php8.3-pdo-mysql mysql-client mysql-server curl git unzip
+2. Prüfe Datei-Struktur:
+   - web/ enthält die Website
+   - db/schema_ext.sql oder db/schema.sql enthält das Datenbankschema
+   - scripts/install_server.sh ist das Installationsskript
+   - tests/install_server_test.sh ist der Smoke‑Test
 
-Anmerkung:
-- Für produktiven Betrieb empfehle nginx + php8.3-fpm und apt install php8.3-fpm.
+Installation (automatisch)
+1) Als root ausführen:
+   sudo bash scripts/install_server.sh
 
-2) Code‑Layout (angenommen: /opt/internetcafe)
-sudo mkdir -p /opt/internetcafe
-sudo chown $(whoami):$(whoami) /opt/internetcafe
-cd /opt/internetcafe
+Das Skript führt aus:
+- Installation von mysql-server (MySQL 8) und grundlegenden PHP‑Packages
+- Start/Enable von mysql
+- Anlegen von DB + Benutzer (Konfigurierbar via ENV: DB_NAME, DB_USER, DB_PASS)
+- Import des Schemas (sucht db/schema_ext.sql, fallback db/schema.sql)
+- Kopie der Website (web/) nach /var/www/internetcafe
+- Setzen der Zugriffsrechte (www-data)
+- Optionale Neustarts für Apache/Nginx
+- Validierungschecks (DB-Verbindung, Tabellenanzahl, Webverzeichnis, PHP verfügbar)
 
-Kopiere/lege dort die Web‑Dateien ab (z. B. aus deinem Git‑Repo). Wichtige Pfade, die in dieser Doku vorkommen:
-- API: web/api/computers.php
-- Web‑Root (Testserver): web/
-- SQL: init_internetcafe.sql, add_state_to_computers.sql
-- DB client‑defaults: /home/surfer/.my.cnf oder /etc/internetcafe-db.conf (optional)
+Wichtige Umgebungsvariablen (optional)
+- DB_NAME (default: internetcafe)
+- DB_USER (default: internetcafe_user)
+- DB_PASS (default: internetcafe_pass)
+- WEB_DEST (default: /var/www/internetcafe)
 
-3) Datenbank initialisieren
-- MySQL root (interaktiv):
-sudo mysql -e "CREATE DATABASE IF NOT EXISTS internetcafe CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+Empfohlen: Setze DB_PASS vor dem Ausführen:
+export DB_PASS="ÄndereMichSicher!"
 
-- Schema + Demo‑Daten (wenn noch leer):
-# als root/mySQL‑Admin
-mysql -u root -p internetcafe < /opt/internetcafe/init_internetcafe.sql
+Manuelle Installation (falls du Komponenten lieber einzeln einrichtest)
+1) MySQL installieren und starten:
+   sudo apt update
+   sudo apt install -y mysql-server
+   sudo systemctl enable --now mysql
 
-- Falls du nur die state‑Spalte brauchst (falls nicht schon vorhanden), siehe:
-mysql -u root -p < /opt/internetcafe/add_state_to_computers.sql
+2) PHP + Webserver:
+   sudo apt install -y php php-mysql apache2 rsync curl
+   sudo systemctl enable --now apache2
 
-Prüfen:
-mysql -u root -p -D internetcafe -e "SELECT id,hostname,name,current_state,state FROM computers LIMIT 20\G"
+3) DB + Benutzer anlegen (Beispiel):
+   sudo mysql -e "CREATE DATABASE internetcafe CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+   sudo mysql -e \"CREATE USER 'internetcafe_user'@'localhost' IDENTIFIED BY 'internetcafe_pass'; GRANT ALL ON internetcafe.* TO 'internetcafe_user'@'localhost'; FLUSH PRIVILEGES;\"
 
-4) Secrets & Konfiguration
-- API secret (Server auth):
-Erzeuge eine Datei /etc/internetcafe-api.conf (root) mit Inhalt:
-API_SECRET="REPLACE_WITH_STRONG_SECRET"
+4) Schema importieren:
+   sudo mysql internetcafe < db/schema_ext.sql
 
-sudo tee /etc/internetcafe-api.conf >/dev/null <<'EOF'
-API_SECRET="mein-sehr-starkes-secret-ersetzt-denn"
-EOF
-sudo chmod 600 /etc/internetcafe-api.conf
+5) Website kopieren:
+   sudo mkdir -p /var/www/internetcafe
+   sudo rsync -a --delete web/ /var/www/internetcafe/
+   sudo chown -R www-data:www-data /var/www/internetcafe
 
-- Clientd secret (für Weiterleitung an Clients):
-sudo tee /etc/internetcafe-clientd.conf >/dev/null <<'EOF'
-CLIENTD_SECRET="client-secret-ändert-werden"
-EOF
-sudo chmod 600 /etc/internetcafe-clientd.conf
+Validierung / Smoke Tests
+- Starte die mitgelieferten Smoke Tests:
+  sudo bash tests/install_server_test.sh
 
-Hinweis: Alternativ exportiere `API_SECRET` und `CLIENTD_SECRET` in der Webserver‑Umgebung (z. B. systemd unit, PHP-FPM pool env).
+- Optionaler Browser‑Check:
+  Kopiere web/test_db.php nach /var/www/internetcafe/test_db.php und rufe http://localhost/test_db.php auf.
 
-5) Starten des Test‑Webservers (schnell)
-Für Tests empfiehlt sich der PHP Built‑in Server (nur Test/Dev).
+Troubleshooting
+- MySQL startet nicht
+  - Prüfe Logs: sudo journalctl -u mysql -e
+  - Prüfe freien Speicher/Ports
 
-cd /opt/internetcafe/web
-# Starten auf Port 8080 im Hintergrund
-nohup php -S 0.0.0.0:8080 -t . >/var/log/internetcafe-php.log 2>&1 & disown
+- Schema wird nicht importiert
+  - Stelle sicher, dass db/schema_ext.sql oder db/schema.sql im Projekt vorhanden ist
+  - Prüfe Dateienrechte (Lesen für root)
 
-Prüfen:
-# API jetzt testen (lokal)
-curl -i -H "Authorization: Bearer mein-sehr-starkes-secret-ersetzt-denn" -H "Content-Type: application/json" \
-  -X POST http://127.0.0.1:8080/api/computers/1/action \
-  -d '{"action":"set_state","state":"wartung","occupied":"0"}'
+- Webserver zeigt Fehler
+  - Prüfe Apache error.log: sudo tail -n 200 /var/log/apache2/error.log
+  - Stelle sicher, dass PHP installiert und das php‑module aktiviert ist
 
-Erwartetes JSON: { "ok": true, "updated_db": true, ... }
+Sicherheits‑Hinweise
+- Ändere DB_PASS nach Installation auf ein sicheres Passwort
+- In Produktionsumgebungen: benutze eine Secrets‑Management‑Lösung (Vault, environment files mit restriktiven Rechten)
+- Entferne web/test_db.php nach erfolgreicher Prüfung
 
-6) Systemd (optional, stabiler Testbetrieb)
-Wenn du möchtest, erstelle einen systemd Service (beispiel für Testserver mit php -S):
-/etc/systemd/system/internetcafe-web.service
-[Unit]
-Description=Internetcafe PHP Test Server
-After=network.target
+CI / Automatisierung (Empfehlung)
+- Erzeuge einen GitHub Actions Job oder eine Docker‑Compose Testumgebung, die:
+  - install_server.sh ausführt
+  - tests/install_server_test.sh startet
+  - Cleanup nach Tests durchführt
+- So lassen sich zukünftige Änderungen automatisch validieren.
 
-[Service]
-Type=simple
-WorkingDirectory=/opt/internetcafe/web
-ExecStart=/usr/bin/php -S 0.0.0.0:8080 -t .
-Restart=on-failure
-Environment=API_SECRET=mein-sehr-starkes-secret-ersetzt-denn
-Environment=CLIENTD_SECRET=client-secret-ändert-werden
-User=www-data
-Group=www-data
+Änderungsprotokoll
+- v1: Erstellt (Installer + Smoke Tests + Dokumentation) — Ziel: Ubuntu MATE (Debian/Ubuntu)
 
-# dann:
-sudo systemctl daemon-reload
-sudo systemctl enable --now internetcafe-web.service
-sudo journalctl -u internetcafe-web.service -f
-
-7) Test‑Checkliste für morgen (Schnelltest)
-- DB: SELECT COUNT(*) FROM computers;
-- API Auth: curl mit korrektem Bearer token → 200
-- API set_state: POST action set_state → DB spalte `state` ändert sich
-- Forwarding: Falls Clients laufen, prüfen /var/lib/clientd/state.json auf Client
-- Logs: tail -n 200 /var/log/internetcafe-php.log oder systemd journal
-
-Troubleshooting (häufig)
-- "Access denied" beim mysql: root per socket? Versuche sudo mysql -e "..."
-- PHP: mbstring fehlt → sudo apt install php8.3-mbstring; restart fpm if used
-- API 500 mit "server misconfigured: API secret not set" → set /etc/internetcafe-api.conf oder env var
-
-Security & Production Hinweise (kurz)
-- Verwende nginx + php‑fpm hinter TLS (HTTPS).
-- Lagere secrets nicht in repo; verwende vault/oder environment in systemd/php-fpm.
-- Setze DB‑User mit minimalen Rechten für die App (nicht root) und verwende /home/surfer/.my.cnf mit chmod 600.
-- Absicherung der Client‑Forwarding‑Schnittstelle (CLIENTD_SECRET) notwendig.
-
-Zusätzliche Dateien / SQL
-- init_internetcafe.sql — Erstinitialisierung mit Tabellen + Demo
-- add_state_to_computers.sh — Script zum Hinzufügen/Befüllen der state Spalte
-- make_name_unique_and_notnull.sh — Script zur Bereinigung und Hinzufügen von UNIQUE/NOT NULL
-
-Wenn du willst, bereite ich jetzt ein kurzes "One‑page Testskript" vor, das für morgen die wichtigsten Prüfungen automatisiert durchführt (DB checks, curl API, sample clientd request). Antworte: "Testskript" — ich lege es an.
+Wenn du möchtest, kann ich das Dokument noch anpassen (mehr Details zu Firewall/ufw, TLS/HTTPS, oder spezifische Apache‑VirtualHost‑Konfigurationen).
