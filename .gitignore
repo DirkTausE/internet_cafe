@@ -1,6 +1,8 @@
 # Projekt-spezifische Ignorierliste
 /storage/
 config.php
+config.local.php
+config_local.php
 .env
 *.log
 *.sqlite

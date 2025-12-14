@@ -123,12 +123,15 @@ def send_api(endpoint: str, payload: dict) -> Optional[dict]:
         import requests  # type: ignore
 
         url = SERVER_URL + endpoint
-        r = requests.post(url, json=payload, headers=headers, timeout=5)
+        r = requests.post(
+            url, json=payload, headers=headers, timeout=5
+        )
         try:
             return r.json()
         except Exception:
             return {"http_status": r.status_code, "text": r.text}
     except Exception:
+        # fallback to curl if requests not available
         cmd = [
             "curl",
             "-sS",
@@ -161,6 +164,7 @@ def send_api(endpoint: str, payload: dict) -> Optional[dict]:
 class ClientDaemon:
     def __init__(self) -> None:
         self.last_job_ids = set()
+        self._last_sent_current_state = None
         if cups:
             try:
                 self.cups_conn = cups.Connection()
@@ -206,10 +210,7 @@ class ClientDaemon:
                     "pages": pages,
                     "user": user,
                 }
-                LOG.info(
-                    "Found print job -> sending to server: %s",
-                    payload,
-                )
+                LOG.info("Found print job -> sending to server: %s", payload)
                 res = send_api("print/job", payload)
                 LOG.info("Server response: %s", res)
             except Exception as e:
@@ -220,11 +221,28 @@ class ClientDaemon:
         try:
             r = send_api("pc/get_state", {"host": HOSTNAME})
             if isinstance(r, dict):
-                state_raw = r.get("computer", {}).get("current_state")
+                # read admin state (what the server wants the client to do)
+                state_raw = r.get("computer", {}).get("state")
                 state = normalize_state(state_raw)
                 if state is not None:
                     self.apply_state(state)
-                send_api("pc/set_state", {"host": HOSTNAME, "state": state})
+
+                # send back the actual current state (only if set and changed)
+                current_to_send = state
+                if (
+                    current_to_send is not None
+                    and current_to_send != self._last_sent_current_state
+                ):
+                    res = send_api(
+                        "pc/set_state",
+                        {
+                            "host": HOSTNAME,
+                            "current_state": current_to_send,
+                        },
+                    )
+                    LOG.debug("pc/set_state response: %s", res)
+                    if isinstance(res, dict) and res.get("ok") is True:
+                        self._last_sent_current_state = current_to_send
         except Exception as e:
             LOG.debug("checkin_state error: %s", e)
 
