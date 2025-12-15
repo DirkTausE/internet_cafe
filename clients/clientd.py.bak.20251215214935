@@ -68,7 +68,7 @@ API_KEY = conf.get("API_KEY", "") or ""
 
 if not CLIENTD_SECRET:
     LOG.warning(
-        "CLIENTD_SECRET not set in %s; client requests will be unauthenticated.",
+        "CLIENTD_SECRET unset in %s; client request will be unauthenticated.",
         CONFIG_FILE,
     )
 if not API_KEY:
@@ -263,7 +263,7 @@ class ClientDaemon:
         """
         Apply canonical state. Additionally manage greeter:
         - when state == 'gast' => enable guest access via greeter_neu
-        - when state == 'wartung' => show maintenance prompt (and disable guest)
+        - when state == 'wartung' => show maintenance prompt (+ disable guest)
         - when transitioning away from 'gast'/'wartung' revert greeter changes
         """
         state = (state or "").lower()
@@ -299,8 +299,7 @@ class ClientDaemon:
                     greeter.show_maintenance_prompt()  # type: ignore
                 except Exception as e:
                     LOG.warning(
-                        "greeter.show_maintenance_prompt failed: %s",
-                        e,
+                        "greeter.show_maintenance_prompt failed: %s", e
                     )
         else:
             # leaving maintenance
@@ -309,8 +308,7 @@ class ClientDaemon:
                     greeter.clear_maintenance_prompt()  # type: ignore
                 except Exception as e:
                     LOG.warning(
-                        "greeter.clear_maintenance_prompt failed: %s",
-                        e,
+                        "greeter.clear_maintenance_prompt failed: %s", e
                     )
 
         # perform local system actions for certain states
@@ -321,10 +319,7 @@ class ClientDaemon:
                     check=False,
                     timeout=10,
                 )
-                LOG.info(
-                    "Requested termination of sessions for user %s",
-                    user,
-                )
+                LOG.info("Requested termination of sessions for user %s", user)
             except Exception as e:
                 LOG.warning("Could not terminate-user: %s", e)
         elif state == "pause":
