@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # clients/clientd.py
 # Client daemon: read admin 'state' from server and report 'current_state'.
-# Additionally integrates with greeter_neu to enable guest login for 'gast'
-# and to show a maintenance login prompt for 'wartung'.
+# Integrates with greeter_neu to enable guest login for 'gast' and to show
+# a maintenance login prompt for 'wartung'.
 
 import json
 import logging
@@ -23,7 +23,6 @@ except Exception:
 try:
     from clients import greeter_neu  # type: ignore
 except Exception:
-    # try relative import when run from project root
     try:
         import greeter_neu  # type: ignore
     except Exception:
@@ -32,7 +31,9 @@ except Exception:
 LOG = logging.getLogger("clientd")
 LOG.setLevel(logging.INFO)
 ch = logging.StreamHandler()
-ch.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+ch.setFormatter(
+    logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+)
 LOG.addHandler(ch)
 
 CONFIG_FILE = Path("/etc/internetcafe-clientd.conf")
@@ -61,22 +62,22 @@ def load_conf(path: Path) -> dict:
 
 conf = load_conf(CONFIG_FILE)
 
-# Secrets: only from config file (no environment variable fallback)
+# Secrets: only from config file
 CLIENTD_SECRET = conf.get("CLIENTD_SECRET", "") or ""
 API_KEY = conf.get("API_KEY", "") or ""
 
 if not CLIENTD_SECRET:
     LOG.warning(
-        "CLIENTD_SECRET not set in %s. Client requests will be unauthenticated.",
+        "CLIENTD_SECRET unset in %s; client request will be unauthenticated.",
         CONFIG_FILE,
     )
 if not API_KEY:
     LOG.warning(
-        "API_KEY not set in %s. Server requests will be unauthenticated.",
+        "API_KEY not set in %s; server requests will be unauthenticated.",
         CONFIG_FILE,
     )
 
-# Server / runtime defaults (still configurable via env if desired)
+# Server / runtime defaults (configurable via conf)
 SERVER_URL = conf.get("SERVER_URL") or "http://server.local/api.php?action="
 HOSTNAME = socket.gethostname()
 CHECKIN_INTERVAL = int(conf.get("CHECKIN_INTERVAL") or 15)
@@ -134,7 +135,12 @@ def send_api(endpoint: str, payload: dict) -> Optional[dict]:
         import requests  # type: ignore
 
         url = SERVER_URL + endpoint
-        r = requests.post(url, json=payload, headers=headers, timeout=5)
+        r = requests.post(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=5,
+        )
         try:
             return r.json()
         except Exception:
@@ -209,7 +215,8 @@ class ClientDaemon:
             try:
                 attrs = self.cups_conn.getJobAttributes(jid)
                 pages = int(
-                    attrs.get("job-media-sheets", attrs.get("page-count", 0)) or 0
+                    attrs.get("job-media-sheets", attrs.get("page-count", 0))
+                    or 0
                 )
                 job_name = attrs.get("job-name", str(jid))
                 user = attrs.get("job-originating-user-name", None)
@@ -256,8 +263,8 @@ class ClientDaemon:
         """
         Apply canonical state. Additionally manage greeter:
         - when state == 'gast' => enable guest access via greeter_neu
-        - when state == 'wartung' => show maintenance prompt (and disable guest)
-        - when transitioning away from 'gast'/'wartung' revert greeter changes where feasible
+        - when state == 'wartung' => show maintenance prompt (+ disable guest)
+        - when transitioning away from 'gast'/'wartung' revert greeter changes
         """
         state = (state or "").lower()
         LOG.info("Applying state: %s", state)
@@ -267,11 +274,7 @@ class ClientDaemon:
         except Exception:
             user = "unknown"
 
-        # greeter handling: only act when module available
-        try:
-            greeter = greeter_neu  # type: ignore
-        except Exception:
-            greeter = None  # type: ignore
+        greeter = greeter_neu if greeter_neu is not None else None
 
         # If entering 'gast', ensure guest access enabled
         if state == "gast":
@@ -295,14 +298,18 @@ class ClientDaemon:
                 try:
                     greeter.show_maintenance_prompt()  # type: ignore
                 except Exception as e:
-                    LOG.warning("greeter.show_maintenance_prompt failed: %s", e)
+                    LOG.warning(
+                        "greeter.show_maintenance_prompt failed: %s", e
+                    )
         else:
             # leaving maintenance
             if prev == "wartung" and greeter is not None:
                 try:
                     greeter.clear_maintenance_prompt()  # type: ignore
                 except Exception as e:
-                    LOG.warning("greeter.clear_maintenance_prompt failed: %s", e)
+                    LOG.warning(
+                        "greeter.clear_maintenance_prompt failed: %s", e
+                    )
 
         # perform local system actions for certain states
         if state in ("stop", "off"):
@@ -326,7 +333,10 @@ class ClientDaemon:
         elif state == "starting":
             LOG.info("Received starting state: no-op for agent.")
         elif state in ("frei", "gast", "wartung"):
-            LOG.info("State %s applied (no direct system action configured).", state)
+            LOG.info(
+                "State %s applied (no direct system action configured).",
+                state,
+            )
         else:
             LOG.debug("Unknown state received: %s", state)
 

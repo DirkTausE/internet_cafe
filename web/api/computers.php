@@ -74,7 +74,7 @@ $allowed_states = ['starting','frei','gast','pause','wartung','stop','off'];
 
 $api_secret = get_secret('API_SECRET', '/etc/internetcafe-api.conf', 'API_SECRET');
 if (!$api_secret) {
-    // fallback to web/.env in repo (optional)
+    // fallback to environment
     $api_secret = getenv('API_SECRET') ?: null;
 }
 if (!$api_secret) {
@@ -82,10 +82,10 @@ if (!$api_secret) {
     send_json(500, ['ok'=>false,'error'=>'server misconfigured: API secret not set']);
 }
 
-// authenticate incoming request
+// authenticate incoming request (Bearer token)
 $token = get_bearer_token_from_header();
 if (!$token) send_json(401, ['ok'=>false,'error'=>'missing Authorization Bearer token']);
-if (!hash_equals($api_secret, $token)) send_json(403, ['ok'=>false,'error'=>'forbidden']);
+if (!hash_equals((string)$api_secret, (string)$token)) send_json(403, ['ok'=>false,'error'=>'forbidden']);
 
 // parse ID/hostname from request URI
 $uri = $_SERVER['REQUEST_URI'] ?? '';
@@ -268,7 +268,7 @@ if ($action === 'set_state') {
     send_json(200, $result);
 }
 
-// ... rest unchanged (forward actions)
+// handle direct actions forwarded to clients (start/stop/restart)
 $forward_actions = ['start','stop','restart'];
 if (in_array($action, $forward_actions, true)) {
     // attempt to forward to client (no DB change)
@@ -279,4 +279,38 @@ if (in_array($action, $forward_actions, true)) {
     if (isset($data['reason'])) $payload['reason'] = $data['reason'];
 
     $clientd_secret = get_secret('CLIENTD_SECRET', '/etc/internetcafe-clientd.conf', 'CLIENTD_SECRET') ?: getenv('CLIENTD_SECRET') ?: null;
-    // forwarding logic continues unchanged...
+
+    $client_port = 9999;
+    $url = (strpos($client_ip, ':') !== false && substr_count($client_ip, ':') === 1) ? "http://{$client_ip}/action" : "http://{$client_ip}:{$client_port}/action";
+
+    $curl = curl_init();
+    curl_setopt($curl, CURLOPT_URL, $url);
+    curl_setopt($curl, CURLOPT_POST, true);
+    $json = json_encode($payload);
+    curl_setopt($curl, CURLOPT_POSTFIELDS, $json);
+    curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($curl, CURLOPT_TIMEOUT, 5);
+    $headers = ['Content-Type: application/json'];
+    if ($clientd_secret) $headers[] = 'Authorization: Bearer ' . $clientd_secret;
+    curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+
+    $resp = curl_exec($curl);
+    $err = curl_error($curl);
+    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    curl_close($curl);
+
+    if ($resp !== false && $http_code >= 200 && $http_code < 300) {
+        $result['forwarded'] = true;
+        $dec = json_decode($resp, true);
+        $result['client_response'] = $dec !== null ? $dec : $resp;
+    } else {
+        $result['forwarded'] = false;
+        $result['client_response'] = ['error' => $err ?: ('HTTP ' . $http_code), 'raw' => $resp];
+    }
+
+    $result['ok'] = true;
+    send_json(200, $result);
+}
+
+// fallback
+send_json(400, ['ok'=>false,'error'=>'unsupported action']);
