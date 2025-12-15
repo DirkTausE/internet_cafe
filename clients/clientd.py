@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # clients/clientd.py
-# Client daemon: read admin 'state' from server and report 'current_state'.
-# Integrates with greeter_neu to enable guest login for 'gast' and to show
-# a maintenance login prompt for 'wartung'.
+# Client daemon: read admin 'state' from server and report
+# 'current_state'. Integrates with greeter_neu to enable guest login
+# for 'gast' and to show a maintenance prompt for 'wartung'.
 
 import json
 import logging
@@ -68,12 +68,14 @@ API_KEY = conf.get("API_KEY", "") or ""
 
 if not CLIENTD_SECRET:
     LOG.warning(
-        "CLIENTD_SECRET not set in %s; client requests will be unauthenticated.",
+        "CLIENTD_SECRET not set in %s; client requests will be"
+        " unauthenticated.",
         CONFIG_FILE,
     )
 if not API_KEY:
     LOG.warning(
-        "API_KEY not set in %s; server requests will be unauthenticated.",
+        "API_KEY not set in %s; server requests will be"
+        " unauthenticated.",
         CONFIG_FILE,
     )
 
@@ -136,10 +138,7 @@ def send_api(endpoint: str, payload: dict) -> Optional[dict]:
 
         url = SERVER_URL + endpoint
         r = requests.post(
-            url,
-            json=payload,
-            headers=headers,
-            timeout=5,
+            url, json=payload, headers=headers, timeout=5
         )
         try:
             return r.json()
@@ -226,7 +225,10 @@ class ClientDaemon:
                     "pages": pages,
                     "user": user,
                 }
-                LOG.info("Found print job -> sending to server: %s", payload)
+                LOG.info(
+                    "Found print job -> sending to server: %s",
+                    payload,
+                )
                 res = send_api("print/job", payload)
                 LOG.info("Server response: %s", res)
             except Exception as e:
@@ -243,7 +245,7 @@ class ClientDaemon:
                 if state is not None:
                     self.apply_state(state)
 
-                # send back applied/measured current_state only when changed
+                # send back applied/measured current_state when changed
                 current_to_send = state
                 if (
                     current_to_send is not None
@@ -262,9 +264,9 @@ class ClientDaemon:
     def apply_state(self, state: str) -> None:
         """
         Apply canonical state. Additionally manage greeter:
-        - when state == 'gast' => enable guest access via greeter_neu
-        - when state == 'wartung' => show maintenance prompt (and disable guest)
-        - when transitioning away from 'gast'/'wartung' revert greeter changes
+        - when state == 'gast' enable guest login
+        - when state == 'wartung' show maintenance prompt
+        - revert greeter changes on transition away
         """
         state = (state or "").lower()
         LOG.info("Applying state: %s", state)
@@ -276,7 +278,7 @@ class ClientDaemon:
 
         greeter = greeter_neu if greeter_neu is not None else None
 
-        # If entering 'gast', ensure guest access enabled
+        # entering 'gast' => enable guest access
         if state == "gast":
             if greeter is not None:
                 try:
@@ -284,23 +286,21 @@ class ClientDaemon:
                 except Exception as e:
                     LOG.warning("greeter.enable_guest_access failed: %s", e)
         else:
-            # leaving 'gast' state: consider disabling guest access
+            # leaving 'gast' => disable guest access
             if prev == "gast" and greeter is not None:
                 try:
                     greeter.disable_guest_access()  # type: ignore
                 except Exception as e:
                     LOG.warning("greeter.disable_guest_access failed: %s", e)
 
-        # Maintenance handling
+        # maintenance handling
         if state == "wartung":
-            # show maintenance prompt and disable guest
             if greeter is not None:
                 try:
                     greeter.show_maintenance_prompt()  # type: ignore
                 except Exception as e:
                     LOG.warning(
-                        "greeter.show_maintenance_prompt failed: %s",
-                        e,
+                        "greeter.show_maintenance_prompt failed: %s", e
                     )
         else:
             # leaving maintenance
@@ -309,11 +309,10 @@ class ClientDaemon:
                     greeter.clear_maintenance_prompt()  # type: ignore
                 except Exception as e:
                     LOG.warning(
-                        "greeter.clear_maintenance_prompt failed: %s",
-                        e,
+                        "greeter.clear_maintenance_prompt failed: %s", e
                     )
 
-        # perform local system actions for certain states
+        # perform local system actions for some states
         if state in ("stop", "off"):
             try:
                 subprocess.run(
