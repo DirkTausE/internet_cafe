@@ -89,9 +89,7 @@ def enable_guest_access() -> bool:
     lightdm_sbin = Path("/usr/sbin/lightdm")
     lightdm_bin = Path("/usr/bin/lightdm")
     if not lightdm_sbin.exists() and not lightdm_bin.exists():
-        LOG.warning(
-            "LightDM not detected; enable_guest_access unsupported."
-        )
+        LOG.warning("LightDM not detected; enable_guest_access unsupported.")
         return False
 
     ok, msg = _write_lightdm_conf(True)
@@ -121,9 +119,7 @@ def disable_guest_access() -> bool:
     lightdm_sbin = Path("/usr/sbin/lightdm")
     lightdm_bin = Path("/usr/bin/lightdm")
     if not lightdm_sbin.exists() and not lightdm_bin.exists():
-        LOG.warning(
-            "LightDM not detected; disable_guest_access unsupported."
-        )
+        LOG.warning("LightDM not detected; disable_guest_access unsupported.")
         return False
 
     ok, msg = _write_lightdm_conf(False)
@@ -163,10 +159,7 @@ def show_maintenance_prompt(
 
     ok, msg = _restart_lightdm()
     if not ok:
-        LOG.warning(
-            "Failed to restart LightDM after maintenance: %s",
-            msg,
-        )
+        LOG.warning("Failed to restart LightDM after maintenance: %s", msg)
 
     LOG.info("Maintenance prompt activated.")
     return True
@@ -188,10 +181,7 @@ def clear_maintenance_prompt() -> bool:
 
     ok, msg = _restart_lightdm()
     if not ok:
-        LOG.warning(
-            "Failed to restart LightDM after clearing maintenance: %s",
-            msg,
-        )
+        LOG.warning("Cant restart LightDM after clearing maintenance: %s", msg)
 
     LOG.info("Maintenance prompt cleared.")
     return True
