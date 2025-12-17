@@ -36,11 +36,13 @@ $page_css = isset($page_css) && is_array($page_css) ? $page_css : [];
 $page_js = isset($page_js) && is_array($page_js) ? $page_js : [];
 
 // Standard-Assets (projektweit)
-$global_css = [ 'assets/css/style.css' ];
-$global_js = [ 'assets/js/dashboard.js' ];
+$global_css = [ '/assets/css/style.css' ];
+$global_js = [ '/assets/js/dashboard.js' ];
 
-// Helper: esc
-function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES | ENT_HTML5); }
+// Helper: esc (nur definieren, wenn nicht bereits vorhanden)
+if (!function_exists('h')) {
+    function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES | ENT_HTML5); }
+}
 
 ?><!doctype html>
 <html lang="de">
