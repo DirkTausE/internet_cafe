@@ -1,48 +1,37 @@
 <?php
-// web/head.php
-// Shared head + header fragment for the web frontend.
-// Ensure correct timezone for displayed "Letzte Aktualisierung" timestamp.
+// web/head.php — Kompatibilitäts-Wrapper: setzt typische Variablen und inkludiert header.php
+// Bestehende Seiten, die noch `head.php` include'en, funktionieren weiter.
+// Wenn du head.php irgendwann entfernen willst, können wir Seiten umstellen auf header.php direkt.
+declare(strict_types=1);
 
-// Set timezone from config or environment if provided, otherwise default to Europe/Berlin.
-// You can override by defining APP_TIMEZONE in ../config.php or exporting APP_TIMEZONE env var.
-$tz = null;
-if (defined('APP_TIMEZONE')) {
-    $tz = APP_TIMEZONE;
-} elseif (($env = getenv('APP_TIMEZONE')) !== false && $env !== '') {
-    $tz = $env;
+// Setze Standardwerte wie alte head.php vermutlich erwartet
+if (!isset($page_title)) $page_title = 'Internetcafe — Übersicht';
+if (!isset($no_refresh)) $no_refresh = false;
+
+// Weiterleiten an den neuen canonical header
+$headerFile = __DIR__ . '/header.php';
+if (file_exists($headerFile)) {
+    require_once $headerFile;
+    return;
 }
 
-// Fallback to Europe/Berlin if nothing provided and if PHP has no default set to local CET/CEST.
-if ($tz) {
-    @date_default_timezone_set($tz);
-} else {
-    // If PHP already has a default timezone set, leave it; otherwise set sensible default.
-    if (ini_get('date.timezone') === '') {
-        date_default_timezone_set('Europe/Berlin');
-    }
-}
-?>
-<!doctype html>
+// Fallback minimal (falls header.php fehlt)
+?><!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Internetcafe — Übersicht</title>
+  <title><?php echo htmlspecialchars((string)$page_title, ENT_QUOTES | ENT_HTML5); ?></title>
+<?php if (!$no_refresh): ?>
   <meta http-equiv="refresh" content="30">
-  <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 16px; color:#222; background:#f7f7f7;}
-    .container { max-width:1100px; margin:0 auto; }
-    table { width:100%; border-collapse:collapse; background:#fff; margin-bottom:12px; }
-    th,td { padding:8px 10px; border-bottom:1px solid #eee; text-align:left; font-size:14px; }
-    th { background:#fafafa; font-weight:600; }
-    .muted { color:#777; font-size:13px; }
-    .small { font-size:12px; color:#666; }
-    .status-on { color:#0a0; font-weight:600; }
-  </style>
+<?php endif; ?>
+  <style>body{font-family:system-ui;margin:16px}</style>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>Internetcafe — Übersicht</h1>
-      <p class="muted">Letzte Aktualisierung: <?php echo htmlspecialchars((string)date('Y-m-d H:i:s'), ENT_QUOTES, 'UTF-8'); ?> — Auto-Refresh jede 30s.</p>
+      <h1><?php echo htmlspecialchars((string)$page_title, ENT_QUOTES | ENT_HTML5); ?></h1>
+      <p class="muted">Letzte Aktualisierung: <?php echo htmlspecialchars((string)date('Y-m-d H:i:s'), ENT_QUOTES | ENT_HTML5); ?> — Auto-Refresh jede 30s.</p>
     </header>
+<?php
+// Ende wrapper
