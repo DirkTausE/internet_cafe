@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <p class="muted">Keine Rechner gefunden.</p>
 <?php else: ?>
   <table>
-    <thead><tr><th>Rechner</th><th>Status</th><th>Benutzer</th><th>Aktion</th></tr></thead>
+    <thead><tr><th>Rechner</th><th>Status soll</th><th>Status ist</th><th>Aktion</th></tr></thead>
     <tbody>
 <?php foreach ($computers as $c):
     $id = $c['id'] ?? '';
