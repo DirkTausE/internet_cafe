@@ -1,24 +1,16 @@
 <?php
-// web/index.php — Dashboard (angepasst auf canonical header.php)
 declare(strict_types=1);
 
 // load DB helper
 require_once __DIR__ . '/db.php';
 
-// obtain PDO (db_get_pdo/db_connect)
 $pdo = function_exists('db_get_pdo') ? db_get_pdo() : (function_exists('db_connect') ? db_connect() : null);
 
 if (!$pdo) {
     $cfg = function_exists('load_db_config') ? load_db_config() : [];
-    $host = $cfg['host'] ?? '127.0.0.1';
-    $port = $cfg['port'] ?? null;
-    $name = $cfg['name'] ?? '';
-    $user = $cfg['user'] ?? '';
-    $pass = $cfg['pass'] ?? '';
-    $dsn = $cfg['pdo_dsn'] ?? ($port ? "mysql:host={$host};port={$port};dbname={$name};charset=utf8mb4" : "mysql:host={$host};dbname={$name};charset=utf8mb4");
-
+    $dsn = $cfg['pdo_dsn'] ?? "mysql:host=127.0.0.1;dbname=test;charset=utf8mb4";
     try {
-        $tmp = new PDO($dsn, $user, $pass, [
+        $tmp = new PDO($dsn, $cfg['user'] ?? '', $cfg['pass'] ?? '', [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
@@ -33,77 +25,130 @@ if (!$pdo) {
     }
 }
 
-// Daten laden
-$computers = fetch_computers($pdo);
-$customers = fetch_customers($pdo);
+// Daten laden: Computerübersicht
+$computers = $pdo->query("
+    SELECT c.name AS computer_name, c.current_state, cu.name AS customer_name
+    FROM computers c
+    LEFT JOIN sessions s ON s.computer_id = c.id
+    LEFT JOIN customers cu ON s.customer_id = cu.id AND s.end_time IS NULL
+    ORDER BY c.name
+")->fetchAll();
+
+// Daten laden: Kunden mit offenen Beträgen
+$customers_with_open_balance = $pdo->query("
+    SELECT 
+        c.id, 
+        c.name,
+        COALESCE(SUM(t.total_amount), 0) AS open_balance
+    FROM customers c
+    LEFT JOIN transactions t ON t.customer_id = c.id
+    LEFT JOIN invoice_transactions it ON t.id = it.transaction_id
+    WHERE t.id IS NOT NULL AND it.transaction_id IS NULL
+    GROUP BY c.id
+    HAVING open_balance > 0
+    ORDER BY c.name
+")->fetchAll();
 
 // page-specific settings for header
 $page_title = 'Internet Cafe — Dashboard';
-$page_css = []; // optional: füge hier zusätzliche CSS-Dateien hinzu
-$page_js = [];  // optional: füge hier zusätzliche JS-Dateien hinzu
-
-// include canonical header (öffnet <main class="container">)
 $headerFile = __DIR__ . '/header.php';
 if (is_file($headerFile)) {
     require_once $headerFile;
 } else {
-    // fallback minimal HTML if header.php missing
     echo '<!doctype html><html lang="de"><head><meta charset="utf-8"><title>' . htmlspecialchars((string)$page_title, ENT_QUOTES | ENT_HTML5) . '</title></head><body><main class="container">';
 }
 ?>
+
 <style>
-  /* page-local styles (kept inline for compatibility) */
-  body { font-family: sans-serif; margin: 1rem; background:#fafafa; color:#222; }
-  .grid { display: grid; grid-template-columns: 1fr 420px; gap: 1rem; align-items: start; }
-  section { background: #fff; padding: 0.8rem; border: 1px solid #e6e6e6; border-radius: 4px; }
+  body { font-family: sans-serif; margin: 1rem; }
+  .dashboard { display: flex; gap: 20px; align-items: flex-start; }
+
+  /* Allgemeine Tabellenstile */
   table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #e6e6e6; padding: 0.45rem 0.6rem; vertical-align: top; }
-  th { background: #f2f2f2; text-align: left; }
-  pre { margin: 0; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; word-break:break-word; }
-  .state { font-weight: 700; }
-  .empty { color: #666; padding: 1rem 0; }
-  .small { font-size: 0.95rem; color:#333; }
-  .pc-btn { background:#1976d2;color:#fff;border:none;padding:0.35rem 0.6rem;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.95rem; }
+  th, td { border: 1px solid #e6e6e6; padding: 0.5rem; text-align: left; vertical-align: middle; }
+  th { background: #f9f9f9; }
+  .empty { color: #999; font-style: italic; }
+
+  /* Computer-Tabelle */
+  .computers-table { flex: 2; }
+  .computers-table th:first-child,
+  .computers-table td:first-child { width: 40%; } /* Name des Computers */
+  .computers-table th:nth-child(2),
+  .computers-table td:nth-child(2) { width: 30%; } /* Nutzer */
+  .computers-table th:last-child,
+  .computers-table td:last-child { width: 30%; } /* Status */
+
+  /* Kunden-Tabelle */
+  .customers-table { flex: 1; }
+  .customers-table th:first-child,
+  .customers-table td:first-child { width: 60%; } /* Name des Kunden */
+  .customers-table th:nth-child(2),
+  .customers-table td:nth-child(2) { width: 40%; } /* Offener Betrag */
 </style>
 
-<div class="grid">
-  <section>
+<div class="dashboard">
+  <!-- Computerübersicht -->
+  <section class="computers-table">
     <h2>Computerübersicht</h2>
     <?php if (empty($computers)): ?>
       <div class="empty">Keine Computer gefunden.</div>
     <?php else: ?>
       <table>
-        <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Besetzt</th></tr></thead>
-        <tbody>
-        <?php foreach ($computers as $c): ?>
+        <thead>
           <tr>
-            <td><?php echo htmlspecialchars((string)($c['id'] ?? ''), ENT_QUOTES | ENT_HTML5); ?></td>
-            <td><?php echo htmlspecialchars((string)($c['name'] ?? ''), ENT_QUOTES | ENT_HTML5); ?></td>
-            <td><?php echo htmlspecialchars((string)($c['current_state'] ?? $c['state'] ?? ''), ENT_QUOTES | ENT_HTML5); ?></td>
-            <td><?php echo htmlspecialchars((string)($c['occupied_by'] ?? ''), ENT_QUOTES | ENT_HTML5); ?></td>
+            <th>Name</th>
+            <th>Nutzer</th>
+            <th>Status</th>
           </tr>
-        <?php endforeach; ?>
+        </thead>
+        <tbody>
+          <?php foreach ($computers as $computer): ?>
+            <tr>
+              <td><?php echo htmlspecialchars((string)$computer['computer_name'], ENT_QUOTES | ENT_HTML5); ?></td>
+              <td>
+                <?php echo $computer['customer_name']
+                    ? htmlspecialchars((string)$computer['customer_name'], ENT_QUOTES | ENT_HTML5)
+                    : ''; ?>
+              </td>
+              <td><?php echo htmlspecialchars((string)$computer['current_state'], ENT_QUOTES | ENT_HTML5); ?></td>
+            </tr>
+          <?php endforeach; ?>
         </tbody>
       </table>
     <?php endif; ?>
   </section>
 
-  <aside>
-    <h3>Kunden (Auszug)</h3>
-    <?php if (empty($customers)): ?>
-      <div class="empty">Keine Kunden gefunden.</div>
+  <!-- Kundenübersicht -->
+  <aside class="customers-table">
+    <h2>Kunden mit offenen Beträgen</h2>
+    <?php if (empty($customers_with_open_balance)): ?>
+      <div class="empty">Keine Kunden mit offenen Rechnungen gefunden.</div>
     <?php else: ?>
-      <ul>
-      <?php foreach (array_slice($customers, 0, 20) as $cu): ?>
-        <li><?php echo htmlspecialchars((string)($cu['name'] ?? ''), ENT_QUOTES | ENT_HTML5); ?> — <?php echo htmlspecialchars((string)($cu['email'] ?? ''), ENT_QUOTES | ENT_HTML5); ?></li>
-      <?php endforeach; ?>
-      </ul>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Offener Gesamtbetrag</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($customers_with_open_balance as $customer): ?>
+            <tr>
+              <td>
+                <a href="admin/bestellung.php?customer_id=<?php echo htmlspecialchars((string)$customer['id'], ENT_QUOTES | ENT_HTML5); ?>">
+                  <?php echo htmlspecialchars((string)$customer['name'], ENT_QUOTES | ENT_HTML5); ?>
+                </a>
+              </td>
+              <td><?php echo number_format((float)$customer['open_balance'], 2, ',', '.'); ?> €</td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
     <?php endif; ?>
   </aside>
 </div>
 
 <?php
-// include shared footer (schließt </main></body></html>)
 $footerFile = __DIR__ . '/footer.php';
 if (is_file($footerFile)) {
     require_once $footerFile;
