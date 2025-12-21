@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-// load DB helper
+// DB-Helfer laden
 require_once __DIR__ . '/db.php';
 
 $pdo = function_exists('db_get_pdo') ? db_get_pdo() : (function_exists('db_connect') ? db_connect() : null);
@@ -25,9 +25,14 @@ if (!$pdo) {
     }
 }
 
-// Daten laden: Computerübersicht
+// Daten laden: Computerübersicht mit Statusänderung
 $computers = $pdo->query("
-    SELECT c.name AS computer_name, c.current_state, cu.name AS customer_name
+    SELECT 
+        c.id,
+        c.name AS computer_name, 
+        c.current_state, 
+        c.state, 
+        cu.name AS customer_name
     FROM computers c
     LEFT JOIN sessions s ON s.computer_id = c.id
     LEFT JOIN customers cu ON s.customer_id = cu.id AND s.end_time IS NULL
@@ -49,7 +54,7 @@ $customers_with_open_balance = $pdo->query("
     ORDER BY c.name
 ")->fetchAll();
 
-// page-specific settings for header
+// Seitenspezifische Einstellungen für das Header
 $page_title = 'Internet Cafe — Dashboard';
 $headerFile = __DIR__ . '/header.php';
 if (is_file($headerFile)) {
@@ -57,6 +62,7 @@ if (is_file($headerFile)) {
 } else {
     echo '<!doctype html><html lang="de"><head><meta charset="utf-8"><title>' . htmlspecialchars((string)$page_title, ENT_QUOTES | ENT_HTML5) . '</title></head><body><main class="container">';
 }
+
 ?>
 
 <style>
@@ -91,33 +97,53 @@ if (is_file($headerFile)) {
   <section class="computers-table">
     <h2>Computerübersicht</h2>
     <?php if (empty($computers)): ?>
-      <div class="empty">Keine Computer gefunden.</div>
+        <div class="empty">Keine Computer gefunden.</div>
     <?php else: ?>
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Nutzer</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php foreach ($computers as $computer): ?>
-            <tr>
-              <td><?php echo htmlspecialchars((string)$computer['computer_name'], ENT_QUOTES | ENT_HTML5); ?></td>
-              <td>
-                <?php echo $computer['customer_name']
-                    ? htmlspecialchars((string)$computer['customer_name'], ENT_QUOTES | ENT_HTML5)
-                    : ''; ?>
-              </td>
-              <td><?php echo htmlspecialchars((string)$computer['current_state'], ENT_QUOTES | ENT_HTML5); ?></td>
-            </tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Nutzer</th>
+                    <th>Status</th>
+                    <th>Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($computers as $computer): ?>
+                    <tr>
+                        <td>
+                            <a href="/admin/clients.php?computer_id=<?= htmlspecialchars((string)($computer['id'] ?? ''), ENT_QUOTES | ENT_HTML5) ?>">
+                                <button>
+                                    <?= htmlspecialchars((string)($computer['computer_name'] ?? ''), ENT_QUOTES | ENT_HTML5) ?>
+                                </button>
+                            </a>
+                        </td>
+                        <td>
+                            <?= htmlspecialchars((string)($computer['customer_name'] ?? 'Nicht besetzt'), ENT_QUOTES | ENT_HTML5) ?>
+                        </td>
+                        <td>
+                            <?php
+                            $is_different = $computer['state'] !== $computer['current_state'];
+                            $style = $is_different ? 'border: 2px solid red;' : '';
+                            ?>
+                            <button style="<?= $style ?>">
+                                <?= htmlspecialchars((string)($computer['current_state'] ?? ''), ENT_QUOTES | ENT_HTML5) ?>
+                            </button>
+                        </td>
+                        <td>
+                            <button
+                                class="status-change-button"
+                                data-id="<?= htmlspecialchars((string)($computer['id'] ?? ''), ENT_QUOTES | ENT_HTML5) ?>"
+                            >
+                                Status ändern
+                            </button>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
     <?php endif; ?>
   </section>
-
   <!-- Kundenübersicht -->
   <aside class="customers-table">
     <h2>Kunden mit offenen Beträgen</h2>
@@ -146,7 +172,26 @@ if (is_file($headerFile)) {
       </table>
     <?php endif; ?>
   </aside>
+
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll(".status-change-button").forEach(button => {
+        button.addEventListener("click", async () => {
+            const id = button.dataset.id;
+            const response = await fetch(`/api/computer/change_status.php?computer_id=${id}`, { method: "POST" });
+
+            if (response.ok) {
+                alert("Status erfolgreich geändert");
+                location.reload();
+            } else {
+                alert("Fehler beim Ändern des Status");
+            }
+        });
+    });
+});
+</script>
 
 <?php
 $footerFile = __DIR__ . '/footer.php';

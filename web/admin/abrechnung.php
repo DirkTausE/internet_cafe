@@ -1,4 +1,6 @@
 <?php
+$no_refresh = true;
+
 require_once "../header.php";
 require_once "../db.php";
 
