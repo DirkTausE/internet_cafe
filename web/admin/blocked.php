@@ -6,9 +6,9 @@
 //                   ?export=list -> simple list: one pattern per line
 // Spalten: id, pattern, note, enabled, created_at
 
-$no_refresh = true;
-
 declare(strict_types=1);
+// Seitenrefresh ausschalten
+$no_refresh = true;
 
 // Session sicher starten
 if (session_status() !== PHP_SESSION_ACTIVE) {

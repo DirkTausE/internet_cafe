@@ -4,8 +4,6 @@
 // Verwendet Spalten der Tabelle 'customers' (customer_type, name, is_diako, note, email, balance).
 declare(strict_types=1);
 
-$no_refresh = true;
-
 // session sicher starten
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
@@ -165,6 +163,7 @@ $headerFile = __DIR__ . '/../header.php';
 if (!file_exists($headerFile)) {
     echo '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>' . htmlspecialchars((string)$page_title, ENT_QUOTES | ENT_HTML5) . '</title></head><body>';
 } else {
+    $no_refresh = true;
     require_once $headerFile;
 }
 ?>

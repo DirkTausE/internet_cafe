@@ -7,6 +7,11 @@
 // - optional: $page_js (array of src strings)   -> zusätzliche JS per Seite
 // - optional: $brand (string) -> Marken-/Firmennamen
 declare(strict_types=1);
+//var_dump($no_refresh);
+//exit;
+
+// No Refresh absichern
+//$no_refresh = isset($no_refresh) ? (bool)$no_refresh : false;
 
 // sichere Session-Initialisierung (falls noch nicht gestartet)
 if (session_status() !== PHP_SESSION_ACTIVE) {
