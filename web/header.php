@@ -83,9 +83,21 @@ if (!function_exists('h')) {
 <body>
   <header class="topbar">
     <div class="container" style="display:flex;align-items:center;justify-content:space-between;">
-      <div class="brand"><?php echo h($brand); ?></div>
+      <div class="brand"><h1><?php echo h($brand); ?></h1></div>
       <div class="muted small">Letzte Aktualisierung: <?php echo h((string)date('Y-m-d H:i:s')); ?></div>
     </div>
+    
+    <div class="nav-buttons" style="display: flex; gap: 10px; margin: 10px 0;">
+      <button onclick="window.location.href='/admin/kunden.php'" style="padding: 10px 15px;">Kunden anlegen</button>
+      <button onclick="window.location.href='/admin/bestellung.php'" style="padding: 10px 15px;">Bestellung</button>
+      <button onclick="window.location.href='/admin/abrechnung.php'" style="padding: 10px 15px;">Abrechnung</button>
+      <button onclick="window.location.href='/admin/stand.php'" style="padding: 10px 15px;">Kostenstand</button>
+      <button onclick="window.location.href='/admin/blocked_sites.php'" style="padding: 10px 15px;">Seite sperren</button>
+      <button onclick="window.location.href='/admin/computers.php'" style="padding: 10px 15px;">PC einrichten</button>
+      <button onclick="window.location.href='/admin/rechnung.php'" style="padding: 10px 15px;">Rechnung</button>
+      <button onclick="window.location.href='/index.php'" style="padding: 10px 15px;">Übersicht</button>
+    </div>
+        
   </header>
   <main class="container">
 <?php
