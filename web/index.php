@@ -40,19 +40,25 @@ $computers = $pdo->query("
 ")->fetchAll();
 
 // Daten laden: Kunden mit offenen Beträgen
-$customers_with_open_balance = $pdo->query("
-    SELECT 
-        c.id, 
-        c.name,
-        COALESCE(SUM(t.total_amount), 0) AS open_balance
-    FROM customers c
-    LEFT JOIN transactions t ON t.customer_id = c.id
-    LEFT JOIN invoice_transactions it ON t.id = it.transaction_id
-    WHERE t.id IS NOT NULL AND it.transaction_id IS NULL
-    GROUP BY c.id
-    HAVING open_balance > 0
-    ORDER BY c.name
-")->fetchAll();
+$customers_with_open_balance = [];
+try {
+    $stmt = $pdo->query('
+        SELECT 
+            c.id, 
+            c.name, 
+            SUM(t.total_amount) AS open_balance
+        FROM customers c
+        LEFT JOIN transactions t ON t.customer_id = c.id
+        LEFT JOIN invoice_transactions it ON t.id = it.transaction_id
+        WHERE it.transaction_id IS NULL -- Nur offene Transaktionen
+        GROUP BY c.id
+        HAVING open_balance > 0
+        ORDER BY c.name
+    ');
+    $customers_with_open_balance = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log('index.php: Fehler beim Laden von offenen Beträgen: ' . $e->getMessage());
+}
 
 // Seitenspezifische Einstellungen für das Header
 $page_title = 'Internet Cafe — Dashboard';
@@ -105,7 +111,6 @@ if (is_file($headerFile)) {
                     <th>Name</th>
                     <th>Nutzer</th>
                     <th>Status</th>
-                    <th>Aktionen</th>
                 </tr>
             </thead>
             <tbody>
@@ -126,16 +131,10 @@ if (is_file($headerFile)) {
                             $is_different = $computer['state'] !== $computer['current_state'];
                             $style = $is_different ? 'border: 2px solid red;' : '';
                             ?>
-                            <button style="<?= $style ?>">
+                            <button 
+                                style="<?= $style ?>"
+                                onclick="changeStatus(<?= htmlspecialchars((string)($computer['id'] ?? '')) ?>)">
                                 <?= htmlspecialchars((string)($computer['current_state'] ?? ''), ENT_QUOTES | ENT_HTML5) ?>
-                            </button>
-                        </td>
-                        <td>
-                            <button
-                                class="status-change-button"
-                                data-id="<?= htmlspecialchars((string)($computer['id'] ?? ''), ENT_QUOTES | ENT_HTML5) ?>"
-                            >
-                                Status ändern
                             </button>
                         </td>
                     </tr>
@@ -162,7 +161,9 @@ if (is_file($headerFile)) {
             <tr>
               <td>
                 <a href="admin/bestellung.php?customer_id=<?php echo htmlspecialchars((string)$customer['id'], ENT_QUOTES | ENT_HTML5); ?>">
-                  <?php echo htmlspecialchars((string)$customer['name'], ENT_QUOTES | ENT_HTML5); ?>
+                  <button>
+                    <?php echo htmlspecialchars((string)$customer['name'], ENT_QUOTES | ENT_HTML5); ?>
+                  </button>
                 </a>
               </td>
               <td><?php echo number_format((float)$customer['open_balance'], 2, ',', '.'); ?> €</td>
@@ -177,19 +178,16 @@ if (is_file($headerFile)) {
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll(".status-change-button").forEach(button => {
-        button.addEventListener("click", async () => {
-            const id = button.dataset.id;
-            const response = await fetch(`/api/computer/change_status.php?computer_id=${id}`, { method: "POST" });
+    window.changeStatus = async (computerId) => {
+        const response = await fetch(`/api/computer/change_status.php?computer_id=${computerId}`, { method: "POST" });
 
-            if (response.ok) {
-                alert("Status erfolgreich geändert");
-                location.reload();
-            } else {
-                alert("Fehler beim Ändern des Status");
-            }
-        });
-    });
+        if (response.ok) {
+            alert("Status erfolgreich geändert");
+            location.reload();
+        } else {
+            alert("Fehler beim Ändern des Status");
+        }
+    };
 });
 </script>
 

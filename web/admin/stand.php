@@ -44,18 +44,20 @@ $errors = [];
 if ($customer_id) {
     try {
         $stmt = $pdo->prepare('
-            SELECT 
-                p.name AS product_name,
-                t_items.description,
-                SUM(t_items.quantity) AS total_quantity,
-                t_items.unit_price,
-                SUM(t_items.quantity * t_items.unit_price) AS total_price
-            FROM transaction_items t_items
-            JOIN transactions t ON t.id = t_items.transaction_id
-            LEFT JOIN products p ON p.id = t_items.product_id
-            WHERE t.customer_id = :customer_id
-            GROUP BY p.name, t_items.description, t_items.unit_price
-            ORDER BY p.name, t_items.description
+        SELECT 
+            p.name AS product_name,
+            t_items.description,
+            SUM(t_items.quantity) AS total_quantity,
+            t_items.unit_price,
+            SUM(t_items.quantity * t_items.unit_price) AS total_price
+        FROM transaction_items t_items
+        JOIN transactions t ON t.id = t_items.transaction_id
+        LEFT JOIN invoice_transactions it ON t.id = it.transaction_id
+        LEFT JOIN products p ON p.id = t_items.product_id
+        WHERE t.customer_id = :customer_id
+          AND it.transaction_id IS NULL -- Nur nicht-abgerechnete Transaktionen
+        GROUP BY p.name, t_items.description, t_items.unit_price
+        ORDER BY p.name, t_items.description;
         ');
         $stmt->execute([':customer_id' => $customer_id]);
         $grouped_offers = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -74,18 +76,20 @@ if ($customer_id) {
 if ($customer_id) {
     try {
         $stmt = $pdo->prepare('
-            SELECT 
-                t_items.id AS item_id,
-                p.name AS product_name,
-                t_items.description,
-                t_items.quantity,
-                t_items.unit_price,
-                (t_items.quantity * t_items.unit_price) AS total_price
-            FROM transaction_items t_items
-            JOIN transactions t ON t.id = t_items.transaction_id
-            LEFT JOIN products p ON p.id = t_items.product_id
-            WHERE t.customer_id = :customer_id
-            ORDER BY p.name, t_items.description
+        SELECT 
+            p.name AS product_name,
+            t_items.description,
+            SUM(t_items.quantity) AS total_quantity,
+            t_items.unit_price,
+            SUM(t_items.quantity * t_items.unit_price) AS total_price
+        FROM transaction_items t_items
+        JOIN transactions t ON t.id = t_items.transaction_id
+        LEFT JOIN invoice_transactions it ON t.id = it.transaction_id
+        LEFT JOIN products p ON p.id = t_items.product_id
+        WHERE t.customer_id = :customer_id
+          AND it.transaction_id IS NULL -- Nur nicht-abgerechnete Transaktionen
+        GROUP BY p.name, t_items.description, t_items.unit_price
+        ORDER BY p.name, t_items.description;
         ');
         $stmt->execute([':customer_id' => $customer_id]);
         $ungrouped_offers = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -111,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['storno_item_id']) && 
             WHERE id = :item_id
         ');
         $stmt->execute([':item_id' => $item_id]);
-        $_SESSION['flash'] = 'Der Posten wurde erfolgreich auf 0 gesetzt.';
+        $_SESSION['flash'] = 'Der Posten wurde erfolgreich storniert.';
         header('Location: stand.php?customer_id=' . urlencode((string)$customer_id));
         exit;
     } catch (PDOException $e) {

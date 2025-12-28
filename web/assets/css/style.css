@@ -11,11 +11,32 @@ body {
   padding: 12px 16px;
 }
 .container { padding: 18px; }
+/* Grundsätzliche Eigenschaften für alle Buttons. */
+button {
+    font-size: 16px;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 15px;
+    cursor: pointer;
+}
 .nav-buttons button:hover {
     background: #ffb; /* Beispiel: helles Gelb */
     border: #0b5; /* Beispiel: Grün */
+    padding: 10px 15px;
 }
 .nav-buttons button {
     background: #0b5; /* Beispiel: Grün */
     border: #0b5; /* Beispiel: Grün */
+    padding: 10px 15px;
+}
+.warn-buttons button {
+    background-color: red;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+}.warn-buttons button:hover {
+    background-color: #fdd;
+    color: white;
+    border: none;
+    padding: 5px 10px;
 }
